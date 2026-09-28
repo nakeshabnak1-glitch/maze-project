@@ -7,8 +7,8 @@
 // 坐标点
 struct Point
 {
-    int x;
-    int y;
+    int row;
+    int col;
 };
 
 enum class SolveAlgorithm
