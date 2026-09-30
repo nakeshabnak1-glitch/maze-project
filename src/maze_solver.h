@@ -1,15 +1,7 @@
-#ifndef MAZE_SOLVER_H
+﻿#ifndef MAZE_SOLVER_H
 #define MAZE_SOLVER_H
 
-#include "maze_generator.h"
-#include <vector>
-
-// 坐标点
-struct Point
-{
-    int row;
-    int col;
-};
+#include "maze_types.h"
 
 enum class SolveAlgorithm
 {
@@ -17,6 +9,9 @@ enum class SolveAlgorithm
     DFS_Recursive,
     DFS_Iterative
 };
+
+// 由 B 实现：函数内部检查当前坐标、目标边界和墙壁。
+bool canMove(const MazeGrid& maze, Point from, Direction direction);
 
 /**
  * @brief 迷宫求解

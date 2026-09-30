@@ -1,21 +1,7 @@
-#ifndef MAZE_GENERATOR_H
+﻿#ifndef MAZE_GENERATOR_H
 #define MAZE_GENERATOR_H
 
-#include <vector>
-
-/**
- * @brief 迷宫单个格子结构体，记录四个方向墙壁状态
- */
-struct Cell
-{
-    bool wallTop{true};
-    bool wallRight{true};
-    bool wallBottom{true};
-    bool wallLeft{true};
-};
-
-/// 迷宫网格类型：二维数组，width × height 的格子
-using MazeGrid = std::vector<std::vector<Cell>>;
+#include "maze_types.h"
 
 /// 迷宫生成算法枚举
 enum class GenAlgorithm
@@ -32,5 +18,13 @@ enum class GenAlgorithm
  * @return MazeGrid 迷宫网格，统一接口输出，给求解模块使用
  */
 MazeGrid generateMaze(int width, int height, GenAlgorithm algo);
+
+/**
+ * @brief 返回 height 行、width 列的迷宫，并输出真实拆墙顺序。
+ * @param outSteps 替换为本次成功生成的记录，不追加旧记录；异常时为空。
+ * @note 与 generateMaze 共用算法。1×1 无记录，其余完美迷宫有 N-1 条记录。
+ */
+MazeGrid generateMazeWithSteps(int width, int height, GenAlgorithm algo,
+                               std::vector<WallBreak>& outSteps);
 
 #endif
