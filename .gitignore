@@ -26,3 +26,18 @@ qrc_*.cpp
 .DS_Store
 Thumbs.db
 
+
+# Visual Studio 缓存与构建目录（本项目实际使用的路径）
+.vs/
+out/
+*.db
+*.ipch
+*.sdf
+*.opendb
+*.suo
+*.VC.db
+*.VC.VC.opendb
+CMakeCache.txt
+CMakeFiles/
+launch.vs.json
+CMakeSettings.json
