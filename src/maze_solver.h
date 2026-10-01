@@ -21,12 +21,14 @@ bool canMove(const MazeGrid& maze, Point from, Direction direction);
  * @param algo BFS / DFS递归 / DFS非递归
  * @param outPath 输出：最终路径坐标序列
  * @param outVisitedOrder 输出：访问节点顺序，给GUI动画回放用
+ * @param outParentOf 输出：outParentOf[i] 是 outVisitedOrder[i] 的父节点（即"是从哪个格子走过来的"），与 outVisitedOrder 一一对应，起点没有父节点，固定为 {-1,-1}
  */
 void solveMaze(const MazeGrid& maze,
                Point start,
                Point end,
                SolveAlgorithm algo,
                std::vector<Point>& outPath,
-               std::vector<Point>& outVisitedOrder);
+               std::vector<Point>& outVisitedOrder,
+               std::vector<Point>& outParentOf);
 
 #endif

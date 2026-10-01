@@ -92,7 +92,8 @@ BFS的核心是队列（Queue），队列的特点是"先进先出"，先放进�
 */
 static void solveBFS(const MazeGrid& maze, Point start, Point end,
     std::vector<Point>& outPath,
-    std::vector<Point>& outVisitedOrder)
+    std::vector<Point>& outVisitedOrder,
+    std::vector<Point>& outParentOf)
 {
     const int height = static_cast<int>(maze.size());
     const int width = static_cast<int>(maze[0].size());
@@ -113,6 +114,7 @@ static void solveBFS(const MazeGrid& maze, Point start, Point end,
         q.pop();
         outVisitedOrder.push_back(cur);
         //记录访问了起点
+        outParentOf.push_back(parent[cur.row][cur.col]);
 
         if (samePoint(cur, end)) { found = true; break; }
 
@@ -151,10 +153,12 @@ DFS的思路完全不同：一条路走到黑，走不通再回头（这就是"�
 static bool dfsRecursiveHelper(const MazeGrid& maze, Point cur, Point end,
     std::vector<std::vector<bool>>& visited,
     std::vector<std::vector<Point>>& parent,
-    std::vector<Point>& outVisitedOrder)
+    std::vector<Point>& outVisitedOrder,
+    std::vector<Point>& outParentOf)
 {
     visited[cur.row][cur.col] = true;
     outVisitedOrder.push_back(cur);
+    outParentOf.push_back(parent[cur.row][cur.col]);
 
     if (samePoint(cur, end)) return true;
 
@@ -165,7 +169,7 @@ static bool dfsRecursiveHelper(const MazeGrid& maze, Point cur, Point end,
         if (visited[next.row][next.col]) continue;
 
         parent[next.row][next.col] = cur;
-        if (dfsRecursiveHelper(maze, next, end, visited, parent, outVisitedOrder))
+        if (dfsRecursiveHelper(maze, next, end, visited, parent, outVisitedOrder,outParentOf))
             return true;
     }
     return false;
@@ -173,7 +177,8 @@ static bool dfsRecursiveHelper(const MazeGrid& maze, Point cur, Point end,
 
 static void solveDFSRecursive(const MazeGrid& maze, Point start, Point end,
     std::vector<Point>& outPath,
-    std::vector<Point>& outVisitedOrder)
+    std::vector<Point>& outVisitedOrder,
+    std::vector<Point>& outParentOf)
 {
     const int height = static_cast<int>(maze.size());
     const int width = static_cast<int>(maze[0].size());
@@ -181,7 +186,7 @@ static void solveDFSRecursive(const MazeGrid& maze, Point start, Point end,
     std::vector<std::vector<bool>> visited(height, std::vector<bool>(width, false));
     std::vector<std::vector<Point>> parent(height, std::vector<Point>(width, { -1, -1 }));
 
-    bool found = dfsRecursiveHelper(maze, start, end, visited, parent, outVisitedOrder);
+    bool found = dfsRecursiveHelper(maze, start, end, visited, parent, outVisitedOrder,outParentOf);
     outPath = reconstructPath(parent, start, end, found);
 }
 
@@ -189,7 +194,8 @@ static void solveDFSRecursive(const MazeGrid& maze, Point start, Point end,
 
 static void solveDFSIterative(const MazeGrid& maze, Point start, Point end,
     std::vector<Point>& outPath,
-    std::vector<Point>& outVisitedOrder)
+    std::vector<Point>& outVisitedOrder,
+    std::vector<Point>& outParentOf)
 {
     const int height = static_cast<int>(maze.size());
     const int width = static_cast<int>(maze[0].size());
@@ -210,6 +216,7 @@ static void solveDFSIterative(const MazeGrid& maze, Point start, Point end,
         if (visited[cur.row][cur.col]) continue;
         visited[cur.row][cur.col] = true;
         outVisitedOrder.push_back(cur);
+        outParentOf.push_back(parent[cur.row][cur.col]);
 
         if (samePoint(cur, end)) { found = true; break; }
 
@@ -234,21 +241,23 @@ void solveMaze(const MazeGrid& maze,
     Point end,
     SolveAlgorithm algo,
     std::vector<Point>& outPath,
-    std::vector<Point>& outVisitedOrder)
+    std::vector<Point>& outVisitedOrder,
+    std::vector<Point>& outParentOf)
 {
     outPath.clear();
     outVisitedOrder.clear();
+    outParentOf.clear();
 
     switch (algo)
     {
     case SolveAlgorithm::BFS:
-        solveBFS(maze, start, end, outPath, outVisitedOrder);
+        solveBFS(maze, start, end, outPath, outVisitedOrder,outParentOf);
         break;
     case SolveAlgorithm::DFS_Recursive:
-        solveDFSRecursive(maze, start, end, outPath, outVisitedOrder);
+        solveDFSRecursive(maze, start, end, outPath, outVisitedOrder,outParentOf);
         break;
     case SolveAlgorithm::DFS_Iterative:
-        solveDFSIterative(maze, start, end, outPath, outVisitedOrder);
+        solveDFSIterative(maze, start, end, outPath, outVisitedOrder, outParentOf);
         break;
     }
 }

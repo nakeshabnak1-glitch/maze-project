@@ -1,3 +1,29 @@
+#include <QApplication>
+#include "src/maze_generator.h"
+#include"src/maze_solver.h"
+#include "src/gui.h"
+
+int main(int argc, char* argv[])
+{
+    QApplication app(argc, argv);
+
+    MazeGrid maze = generateMaze(15, 15, GenAlgorithm::Kruskal);
+
+    Point start{ 0, 0 };
+    Point end{ 14, 14 };
+    std::vector<Point> path, visitedOrder, parentOf;
+    solveMaze(maze, start, end, SolveAlgorithm::BFS, path, visitedOrder, parentOf);
+
+    MazeWidget widget;
+    widget.setMaze(maze);
+    widget.setSolution(path, visitedOrder, parentOf);
+    widget.setWindowTitle("迷宫求解动画 - BFS");
+    widget.show();
+    widget.startAnimation();  // 窗口显示后立刻开始播放动画
+    return app.exec();//事件循环
+}
+
+/*
 #include <iostream>
 #include <windows.h>
 #include "src/maze_generator.h"
@@ -6,8 +32,8 @@ using namespace std;
 
 void runTest(const MazeGrid& maze, Point start, Point end, SolveAlgorithm algo, const string& name)
 {
-    vector<Point> path, visitedOrder;
-    solveMaze(maze, start, end, algo, path, visitedOrder);
+    vector<Point> path, visitedOrder, parentOf;
+    solveMaze(maze, start, end, algo, path, visitedOrder, parentOf);
 
     cout << "===== " << name << " =====\n";
     cout << "路径长度: " << path.size() << "\n";
@@ -33,3 +59,4 @@ int main()
 
     return 0;
 }
+*/
