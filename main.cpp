@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
     widget.setSolution(path, visitedOrder, parentOf);
     widget.setWindowTitle("迷宫求解动画 - BFS");
     widget.show();
-    widget.startAnimation();  // 窗口显示后立刻开始播放动画
+    // 动画不再自动开始，改为点击窗口左上角的"开始演示"按钮手动触发
     return app.exec();//事件循环
 }
 

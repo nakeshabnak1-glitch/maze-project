@@ -21,6 +21,16 @@ MazeWidget::MazeWidget(QWidget* parent) : QWidget(parent)
             timer_->stop();
         }
         });
+
+    // 新增：开始按钮，点击之后才真正开始播放动画，而不是窗口一显示就自动开始
+    startButton_ = new QPushButton("开始演示", this);
+    startButton_->move(10, 8);
+    startButton_->resize(100, topBarHeight_ - 16);
+    connect(startButton_, &QPushButton::clicked, this, [this]() {
+        startButton_->setEnabled(false);      // 防止重复点击
+        startButton_->setText("演示中…");
+        startAnimation();
+        });
 }
 
 void MazeWidget::setMaze(const MazeGrid& maze)
@@ -30,7 +40,7 @@ void MazeWidget::setMaze(const MazeGrid& maze)
     {
         int height = static_cast<int>(maze_.size()) * cellSize_;
         int width = static_cast<int>(maze_[0].size()) * cellSize_;
-        setFixedSize(width + 20, height + 20+legendHeight_);
+        setFixedSize(width + 20, height + 20 + legendHeight_ + topBarHeight_);
     }
     update();
 }
@@ -52,10 +62,10 @@ void MazeWidget::startAnimation()
 }
 
 // 坐标换算抽成小函数，方便画连线时复用
-static QPoint cellCenter(Point p, int offset, int cellSize)
+static QPoint cellCenter(Point p, int offsetX, int offsetY, int cellSize)
 {
-    return QPoint(offset + p.col * cellSize + cellSize / 2,
-        offset + p.row * cellSize + cellSize / 2);
+    return QPoint(offsetX + p.col * cellSize + cellSize / 2,
+        offsetY + p.row * cellSize + cellSize / 2);
 }
 
 void MazeWidget::paintEvent(QPaintEvent*)
@@ -63,15 +73,16 @@ void MazeWidget::paintEvent(QPaintEvent*)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    const int offset = 10;
+    const int offsetX = 10;
+    const int offsetY = 10 + topBarHeight_;  // 纵向多留出顶部按钮的高度，迷宫整体往下移
     painter.fillRect(rect(), QColor(250, 248, 240));
 
     // 第一层：已访问格子填色
     for (int i = 0; i < animationStep_ && i < static_cast<int>(visitedOrder_.size()); ++i)
     {
         const Point& p = visitedOrder_[i];
-        int x = offset + p.col * cellSize_;
-        int y = offset + p.row * cellSize_;
+        int x = offsetX + p.col * cellSize_;
+        int y = offsetY + p.row * cellSize_;
         bool isCurrent = (i == animationStep_ - 1);
         QColor color = isCurrent ? QColor(70, 130, 180) : QColor(173, 216, 230);
         painter.fillRect(x + 2, y + 2, cellSize_ - 4, cellSize_ - 4, color);
@@ -84,8 +95,8 @@ void MazeWidget::paintEvent(QPaintEvent*)
     {
         const Point& parent = parentOf_[i];
         if (parent.row < 0 || parent.col < 0) continue;  // 起点没有父节点，跳过
-        QPoint from = cellCenter(parent, offset, cellSize_);
-        QPoint to = cellCenter(visitedOrder_[i], offset, cellSize_);
+        QPoint from = cellCenter(parent, offsetX, offsetY, cellSize_);
+        QPoint to = cellCenter(visitedOrder_[i], offsetX, offsetY, cellSize_);
         painter.drawLine(from, to);
     }
 
@@ -96,8 +107,8 @@ void MazeWidget::paintEvent(QPaintEvent*)
     {
         for (std::size_t col = 0; col < maze_[row].size(); ++col)
         {
-            int x = offset + static_cast<int>(col) * cellSize_;
-            int y = offset + static_cast<int>(row) * cellSize_;
+            int x = offsetX + static_cast<int>(col) * cellSize_;
+            int y = offsetY + static_cast<int>(row) * cellSize_;
             const Cell& cell = maze_[row][col];
             if (cell.wallTop)    painter.drawLine(x, y, x + cellSize_, y);
             if (cell.wallLeft)   painter.drawLine(x, y, x, y + cellSize_);
@@ -114,8 +125,8 @@ void MazeWidget::paintEvent(QPaintEvent*)
         pathPen.setJoinStyle(Qt::RoundJoin);
         painter.setPen(pathPen);
         for (std::size_t i = 0; i + 1 < path_.size(); ++i)
-            painter.drawLine(cellCenter(path_[i], offset, cellSize_),
-                cellCenter(path_[i + 1], offset, cellSize_));
+            painter.drawLine(cellCenter(path_[i], offsetX, offsetY, cellSize_),
+                cellCenter(path_[i + 1], offsetX, offsetY, cellSize_));
     }
 
     // 第五层：起点终点圆点
@@ -123,18 +134,18 @@ void MazeWidget::paintEvent(QPaintEvent*)
     {
         painter.setBrush(QColor(34, 139, 34));
         painter.setPen(Qt::NoPen);
-        painter.drawEllipse(cellCenter(visitedOrder_.front(), offset, cellSize_), cellSize_ / 4, cellSize_ / 4);
+        painter.drawEllipse(cellCenter(visitedOrder_.front(), offsetX, offsetY, cellSize_), cellSize_ / 4, cellSize_ / 4);
     }
     if (!path_.empty())
     {
         painter.setBrush(QColor(178, 34, 34));
         painter.setPen(Qt::NoPen);
-        painter.drawEllipse(cellCenter(path_.back(), offset, cellSize_), cellSize_ / 4, cellSize_ / 4);
+        painter.drawEllipse(cellCenter(path_.back(), offsetX, offsetY, cellSize_), cellSize_ / 4, cellSize_ / 4);
     }
 
     // ---- 图例：画在迷宫下方 ----
-    int legendTop = offset + static_cast<int>(maze_.size()) * cellSize_ + 15;
-    int legendX = offset;
+    int legendTop = offsetY + static_cast<int>(maze_.size()) * cellSize_ + 15;
+    int legendX = offsetX;
     int rowH = 18;
 
     auto drawLegendItem = [&](int row, int col, QColor color, const QString& label, bool isLine = false)
