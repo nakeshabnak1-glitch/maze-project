@@ -1,9 +1,10 @@
 #include "main_window.h"
 #include "gui.h"
-#include "maze_generator.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -44,11 +45,11 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent)
     // ---- MazeWidget 发出的信号 -> 刷新面板 ----
     connect(mazeWidget_, &MazeWidget::stepChanged, this, [this](int, int) { updateStats(); });
     connect(mazeWidget_, &MazeWidget::playingChanged, this, [this](bool) { updatePlayButton(); });
-    connect(mazeWidget_, &MazeWidget::finished, this, [this]() { updatePlayButton(); updateStats(); });
+    connect(mazeWidget_, &MazeWidget::finished, this, &MainWindow::onAnimationFinished);
     connect(mazeWidget_, &MazeWidget::cellClicked, this, &MainWindow::onCellClicked);
 
     onSpeedChanged(speedSlider_->value());
-    regenerateMaze();  // 启动时先生成一个默认迷宫
+    regenerateMaze(false);  // 启动时先生成一个默认迷宫，直接显示完整迷宫
 }
 
 QWidget* MainWindow::buildControlPanel()
@@ -75,11 +76,16 @@ QWidget* MainWindow::buildControlPanel()
     genAlgoCombo_->addItem("Kruskal（并查集）", static_cast<int>(GenAlgorithm::Kruskal));
     genAlgoCombo_->addItem("Prim（堆优化）", static_cast<int>(GenAlgorithm::Prim));
 
+    animateGenCheck_ = new QCheckBox("播放生成过程", mazeGroup);
+    animateGenCheck_->setChecked(true);
+    animateGenCheck_->setToolTip("勾选后，点\"生成新迷宫\"会先从全是墙的网格开始，\n按生成算法的顺序一面一面拆墙，播完再进入求解");
+
     generateButton_ = new QPushButton("生成新迷宫", mazeGroup);
 
     mazeForm->addRow("宽度：", widthSpin_);
     mazeForm->addRow("高度：", heightSpin_);
     mazeForm->addRow("生成算法：", genAlgoCombo_);
+    mazeForm->addRow(animateGenCheck_);
     mazeForm->addRow(generateButton_);
 
     // ---------- 2. 求解算法 ----------
@@ -110,22 +116,26 @@ QWidget* MainWindow::buildControlPanel()
 
     playButton_ = new QPushButton("播放", playGroup);
     stepButton_ = new QPushButton("单步", playGroup);
+    skipButton_ = new QPushButton("跳到结尾", playGroup);
     resetButton_ = new QPushButton("重置", playGroup);
-    playButton_->setMinimumWidth(90);
-    auto* buttonRow = new QHBoxLayout();
-    buttonRow->addWidget(playButton_);
-    buttonRow->addWidget(stepButton_);
-    buttonRow->addWidget(resetButton_);
+    auto* buttonGrid = new QGridLayout();
+    buttonGrid->addWidget(playButton_, 0, 0);
+    buttonGrid->addWidget(stepButton_, 0, 1);
+    buttonGrid->addWidget(skipButton_, 1, 0);
+    buttonGrid->addWidget(resetButton_, 1, 1);
 
     playLayout->addLayout(speedRow);
-    playLayout->addLayout(buttonRow);
+    playLayout->addLayout(buttonGrid);
 
     // ---------- 4. 统计信息 ----------
     auto* statsGroup = new QGroupBox("统计信息", panel);
     auto* statsLayout = new QVBoxLayout(statsGroup);
     statsLabel_ = new QLabel(statsGroup);
     statsLabel_->setTextFormat(Qt::RichText);
-    statsLabel_->setMinimumWidth(240);
+    statsLabel_->setMinimumWidth(260);
+    statsLabel_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    // 固定能放下 10 行的高度：生成阶段行数少、求解阶段行数多，这样切换阶段时窗口不会忽高忽低
+    statsLabel_->setMinimumHeight(10 * (statsLabel_->fontMetrics().lineSpacing() + 4));
     statsLayout->addWidget(statsLabel_);
 
     // ---------- 提示 ----------
@@ -147,7 +157,8 @@ QWidget* MainWindow::buildControlPanel()
     panelLayout->addStretch();
 
     // ---- 控件信号 -> 槽 ----
-    connect(generateButton_, &QPushButton::clicked, this, &MainWindow::regenerateMaze);
+    connect(generateButton_, &QPushButton::clicked, this,
+        [this]() { regenerateMaze(animateGenCheck_->isChecked()); });
     connect(solveAlgoCombo_, &QComboBox::currentIndexChanged, this, [this](int) { solveCurrentMaze(); });
     connect(speedSlider_, &QSlider::valueChanged, this, &MainWindow::onSpeedChanged);
     connect(playButton_, &QPushButton::clicked, this, [this]() {
@@ -155,6 +166,7 @@ QWidget* MainWindow::buildControlPanel()
         else mazeWidget_->play();
     });
     connect(stepButton_, &QPushButton::clicked, mazeWidget_, &MazeWidget::stepOnce);
+    connect(skipButton_, &QPushButton::clicked, mazeWidget_, &MazeWidget::skipToEnd);
     connect(resetButton_, &QPushButton::clicked, mazeWidget_, &MazeWidget::resetAnimation);
 
     return panel;
@@ -162,28 +174,44 @@ QWidget* MainWindow::buildControlPanel()
 
 // ---------------- 生成与求解 ----------------
 
-void MainWindow::regenerateMaze()
+bool MainWindow::inGenerationPhase() const
+{
+    return mazeWidget_->phase() == MazeWidget::Phase::Generating;
+}
+
+void MainWindow::regenerateMaze(bool animate)
 {
     const int width = widthSpin_->value();
     const int height = heightSpin_->value();
     const auto genAlgo = static_cast<GenAlgorithm>(genAlgoCombo_->currentData().toInt());
 
+    std::vector<WallBreak> steps;
     try
     {
-        maze_ = generateMaze(width, height, genAlgo);
+        // 统一用 generateMazeWithSteps：既拿到迷宫，也拿到拆墙顺序（不播放动画时直接丢掉即可）
+        const auto t0 = std::chrono::steady_clock::now();
+        maze_ = generateMazeWithSteps(width, height, genAlgo, steps);
+        const auto t1 = std::chrono::steady_clock::now();
+        genMicros_ = std::chrono::duration<double, std::micro>(t1 - t0).count();
     }
     catch (const std::exception& e)
     {
         QMessageBox::warning(this, "生成失败", e.what());
         return;
     }
+    genAlgo_ = genAlgo;
+    genStepCount_ = static_cast<int>(steps.size());
 
     // 默认起点左上角、终点右下角
     start_ = { 0, 0 };
     end_ = { height - 1, width - 1 };
 
-    mazeWidget_->setMaze(maze_);
-    updateRecursiveDfsAvailability();  // 可能会切换算法下拉框，所以放在求解之前
+    // 先告诉 MazeWidget 新迷宫（进入生成阶段或求解阶段），
+    // 这样后面 solveCurrentMaze 才能正确判断"现在要不要立刻把求解结果交出去"
+    if (animate && !steps.empty()) mazeWidget_->setGeneration(maze_, steps);
+    else mazeWidget_->setMaze(maze_);
+
+    updateRecursiveDfsAvailability();  // 可能会切换算法下拉框（会触发一次求解），所以放在求解之前
     solveCurrentMaze();
 }
 
@@ -205,11 +233,35 @@ void MainWindow::solveCurrentMaze()
         return;
     }
 
+    setWindowTitle(QString("迷宫生成与求解系统 - %1").arg(algorithmName(algo)));
+
+    // 生成动画还没播完：结果先存着，等生成阶段播完（onAnimationFinished）再交给 MazeWidget。
+    // 所以生成过程中切换求解算法、点击改起终点都没问题，不会打断生成动画。
+    if (inGenerationPhase())
+    {
+        updateStats();
+        return;
+    }
+    pushSolutionToWidget();
+}
+
+void MainWindow::pushSolutionToWidget()
+{
     mazeWidget_->setEndpoints(start_, end_);
     mazeWidget_->setSolution(path_, visitedOrder_, parentOf_);
-    setWindowTitle(QString("迷宫生成与求解系统 - %1").arg(algorithmName(algo)));
     updatePlayButton();
     updateStats();
+}
+
+void MainWindow::onAnimationFinished()
+{
+    if (inGenerationPhase())
+        pushSolutionToWidget();  // 生成播完 -> 进入求解阶段（暂停在第 0 步，等用户点"播放求解"）
+    else
+    {
+        updatePlayButton();
+        updateStats();
+    }
 }
 
 void MainWindow::onCellClicked(Point cell, Qt::MouseButton button)
@@ -268,14 +320,18 @@ void MainWindow::onSpeedChanged(int sliderValue)
 
 void MainWindow::updatePlayButton()
 {
+    // 按钮文字带上阶段，演示时一眼看出现在播的是"生成"还是"求解"
+    const QString what = inGenerationPhase() ? "生成" : "求解";
     if (mazeWidget_->isPlaying()) playButton_->setText("暂停");
-    else if (mazeWidget_->isFinished()) playButton_->setText("重新播放");
-    else if (mazeWidget_->currentStep() > 0) playButton_->setText("继续");
-    else playButton_->setText("播放");
+    else if (mazeWidget_->isFinished()) playButton_->setText("重新播放" + what);
+    else if (mazeWidget_->currentStep() > 0) playButton_->setText("继续" + what);
+    else playButton_->setText("播放" + what);
 
     const bool hasData = mazeWidget_->totalSteps() > 0;
+    const bool finished = mazeWidget_->isFinished();
     playButton_->setEnabled(hasData);
-    stepButton_->setEnabled(hasData && !mazeWidget_->isFinished());
+    stepButton_->setEnabled(hasData && !finished);
+    skipButton_->setEnabled(hasData && !finished);
     resetButton_->setEnabled(hasData && mazeWidget_->currentStep() > 0);
 }
 
@@ -291,31 +347,41 @@ void MainWindow::updateStats()
     const int cols = static_cast<int>(maze_[0].size());
     const int totalCells = rows * cols;
     const int step = mazeWidget_->currentStep();
-    const int visitedTotal = static_cast<int>(visitedOrder_.size());
+    const bool generating = inGenerationPhase();
 
-    const QString pathText = path_.empty()
-        ? QString("<span style='color:#b22222;'>终点不可达</span>")
-        : QString("%1 格").arg(path_.size());
+    QString html = "<table cellspacing='3'>";
+    auto row = [&html](const QString& key, const QString& value) {
+        html += QString("<tr><td>%1</td><td>%2</td></tr>").arg(key, value);
+    };
+    const QString gray = "<span style='color:#888;'>%1</span>";
 
-    const double percent = totalCells > 0 ? 100.0 * visitedTotal / totalCells : 0.0;
+    row("当前阶段：", generating ? "<b>生成迷宫</b>" : "<b>求解迷宫</b>");
+    row("迷宫规模：", QString("%1 行 × %2 列（共 %3 格）").arg(rows).arg(cols).arg(totalCells));
+    row("生成算法：", QString("%1，拆墙 %2 次").arg(algorithmName(genAlgo_)).arg(genStepCount_));
+    row("生成耗时：", QString("%1 µs ").arg(genMicros_, 0, 'f', 1) + gray.arg("（不含动画）"));
 
-    statsLabel_->setText(QString(
-        "<table cellspacing='3'>"
-        "<tr><td>求解算法：</td><td><b>%1</b></td></tr>"
-        "<tr><td>迷宫规模：</td><td>%2 行 × %3 列（共 %4 格）</td></tr>"
-        "<tr><td>起点 → 终点：</td><td>(%5,%6) → (%7,%8)</td></tr>"
-        "<tr><td>动画进度：</td><td>%9 / %10 步</td></tr>"
-        "<tr><td>总访问格数：</td><td>%10 格（占 %11%）</td></tr>"
-        "<tr><td>路径长度：</td><td>%12</td></tr>"
-        "<tr><td>算法耗时：</td><td>%13 µs <span style='color:#888;'>（不含动画）</span></td></tr>"
-        "</table>")
-        .arg(algorithmName(currentSolveAlgorithm()))
-        .arg(rows).arg(cols).arg(totalCells)
-        .arg(start_.row).arg(start_.col).arg(end_.row).arg(end_.col)
-        .arg(step).arg(visitedTotal)
-        .arg(percent, 0, 'f', 1)
-        .arg(pathText)
-        .arg(solveMicros_, 0, 'f', 1));
+    if (generating)
+    {
+        row("拆墙进度：", QString("%1 / %2 步").arg(step).arg(mazeWidget_->totalSteps()));
+        row("求解算法：", algorithmName(currentSolveAlgorithm()) + " " + gray.arg("（生成播完后开始）"));
+    }
+    else
+    {
+        const int visitedTotal = static_cast<int>(visitedOrder_.size());
+        const double percent = totalCells > 0 ? 100.0 * visitedTotal / totalCells : 0.0;
+        const QString pathText = path_.empty()
+            ? QString("<span style='color:#b22222;'>终点不可达</span>")
+            : QString("%1 格").arg(path_.size());
+
+        row("求解算法：", "<b>" + algorithmName(currentSolveAlgorithm()) + "</b>");
+        row("起点 → 终点：", QString("(%1,%2) → (%3,%4)").arg(start_.row).arg(start_.col).arg(end_.row).arg(end_.col));
+        row("动画进度：", QString("%1 / %2 步").arg(step).arg(visitedTotal));
+        row("总访问格数：", QString("%1 格（占 %2%）").arg(visitedTotal).arg(percent, 0, 'f', 1));
+        row("路径长度：", pathText);
+        row("求解耗时：", QString("%1 µs ").arg(solveMicros_, 0, 'f', 1) + gray.arg("（不含动画）"));
+    }
+    html += "</table>";
+    statsLabel_->setText(html);
 
     updatePlayButton();
 }
@@ -332,6 +398,16 @@ QString MainWindow::algorithmName(SolveAlgorithm algo)
     case SolveAlgorithm::BFS:           return "BFS";
     case SolveAlgorithm::DFS_Recursive: return "DFS 递归";
     case SolveAlgorithm::DFS_Iterative: return "DFS 非递归";
+    }
+    return "未知";
+}
+
+QString MainWindow::algorithmName(GenAlgorithm algo)
+{
+    switch (algo)
+    {
+    case GenAlgorithm::Kruskal: return "Kruskal";
+    case GenAlgorithm::Prim:    return "Prim";
     }
     return "未知";
 }

@@ -7,6 +7,7 @@
 #include "maze_types.h"
 
 class QMouseEvent;
+class QPainter;
 
 /*
  * MazeWidget：只负责两件事 ——"画迷宫"和"播放求解动画"。
@@ -20,15 +21,31 @@ class MazeWidget : public QWidget
     Q_OBJECT  // 这个宏是Qt信号槽机制必需的，缺了会导致MOC编译报错
 
 public:
+    // 动画分两个阶段：先播放"迷宫生成"（可选），再播放"迷宫求解"。
+    // 播放/暂停/单步/重置/跳到结尾 这些控制对当前所处的阶段生效。
+    enum class Phase
+    {
+        Generating,  // 从四面全是墙的网格开始，按生成算法记录的顺序逐面拆墙
+        Solving      // 迷宫已完整，播放 BFS/DFS 的探索过程
+    };
+
     explicit MazeWidget(QWidget* parent = nullptr);
 
-    // 换一个新迷宫：会清空旧的求解结果，并根据迷宫大小自动调整格子像素大小
+    // 换一个新迷宫（不播放生成过程）：直接进入求解阶段，清空旧的求解结果，并自动调整格子大小
     void setMaze(const MazeGrid& maze);
+
+    // 换一个新迷宫，并准备播放它的生成过程：
+    // finalMaze 是生成好的完整迷宫，steps 是生成算法依次拆掉的墙（来自 A 的 generateMazeWithSteps）。
+    // 调用后画面显示四面全是墙的网格，处于暂停状态，等用户点"播放"。
+    // 生成阶段播完后会发出 finished()，由 MainWindow 调用 setSolution 进入求解阶段。
+    void setGeneration(const MazeGrid& finalMaze, const std::vector<WallBreak>& steps);
+
+    Phase phase() const { return phase_; }
 
     // 设置起点、终点（画绿点和红点）。和求解结果分开，这样即使终点不可达也能画出来
     void setEndpoints(Point start, Point end);
 
-    // 接收求解结果：动画回到第 0 步，处于暂停状态，等用户点"播放"
+    // 接收求解结果：进入求解阶段，动画回到第 0 步，处于暂停状态，等用户点"播放"
     void setSolution(const std::vector<Point>& path,
                      const std::vector<Point>& visitedOrder,
                      const std::vector<Point>& parentOf);
@@ -37,13 +54,14 @@ public:
     void play();                       // 开始/继续播放；如果已经播完，则从头重播
     void pause();                      // 暂停
     void stepOnce();                   // 暂停并只前进一步
-    void resetAnimation();             // 暂停并回到第 0 步
+    void resetAnimation();             // 暂停并回到当前阶段的第 0 步
+    void skipToEnd();                  // 直接跳到当前阶段的最后一步
     void setStepsPerSecond(int steps); // 播放速度：每秒前进多少步
 
     bool isPlaying() const;
-    bool isFinished() const;           // 是否已经播放到最后一步
+    bool isFinished() const;           // 当前阶段是否已经播放到最后一步
     int currentStep() const { return animationStep_; }
-    int totalSteps() const { return static_cast<int>(visitedOrder_.size()); }
+    int totalSteps() const;            // 当前阶段的总步数：生成阶段=拆墙次数，求解阶段=访问格数
 
 signals:
     void stepChanged(int step, int total);  // 每前进（或重置）一次就发一次，MainWindow 用来刷新统计
@@ -58,10 +76,24 @@ protected:
 private:
     void advance(int count);                 // 动画前进 count 步
     void updateGeometryForMaze();            // 根据迷宫行列数计算格子大小和窗口大小
+    void rebuildGenerationGrid();            // 生成阶段：恢复成四面全是墙的初始网格
+    void applyWallBreak(const WallBreak& step);  // 生成阶段：执行一次拆墙（两侧格子的墙同时打开）
+    void paintGeneration(QPainter& painter);
+    void paintSolving(QPainter& painter);
+    void paintWalls(QPainter& painter, const MazeGrid& grid, int wallWidth);
+    void drawLegendItem(QPainter& painter, int row, int col, QColor color, const QString& label, bool isLine);
     QPoint cellCenter(Point p) const;        // 格子坐标 -> 屏幕像素坐标（格子中心）
     bool cellAt(const QPoint& pos, Point& out) const;  // 屏幕像素坐标 -> 格子坐标
 
-    MazeGrid maze_;
+    Phase phase_ = Phase::Solving;
+
+    MazeGrid maze_;          // 完整的最终迷宫（求解阶段画的就是它）
+
+    // ---- 生成阶段用的数据 ----
+    MazeGrid genGrid_;                    // 正在被"拆墙"的网格：开始时四面全是墙，每步拆一面
+    std::vector<WallBreak> genSteps_;     // 生成算法依次拆掉的墙
+    std::vector<std::vector<char>> carved_;  // carved_[r][c]：这个格子是否已经和别的格子打通
+
     Point start_{ 0, 0 };
     Point end_{ 0, 0 };
     bool hasEndpoints_ = false;
