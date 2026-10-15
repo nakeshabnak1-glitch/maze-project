@@ -1,25 +1,14 @@
 #include <QApplication>
-#include "src/maze_generator.h"
-#include"src/maze_solver.h"
-#include "src/gui.h"
+#include "src/main_window.h"
 
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
 
-    MazeGrid maze = generateMaze(15, 15, GenAlgorithm::Kruskal);
+    // 生成迷宫、选择算法、求解、播放动画，全部由主窗口左侧的控制面板完成
+    MainWindow window;
+    window.show();
 
-    Point start{ 0, 0 };
-    Point end{ 14, 14 };
-    std::vector<Point> path, visitedOrder, parentOf;
-    solveMaze(maze, start, end, SolveAlgorithm::BFS, path, visitedOrder, parentOf);
-
-    MazeWidget widget;
-    widget.setMaze(maze);
-    widget.setSolution(path, visitedOrder, parentOf);
-    widget.setWindowTitle("迷宫求解动画 - BFS");
-    widget.show();
-    // 动画不再自动开始，改为点击窗口左上角的"开始演示"按钮手动触发
     return app.exec();//事件循环
 }
 
