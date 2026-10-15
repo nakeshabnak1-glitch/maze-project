@@ -3,6 +3,8 @@
 #include <queue>
 #include <stack>
 #include <algorithm>
+#include <stdexcept>
+#include <string>
 
 namespace
 {
@@ -52,6 +54,38 @@ namespace
         std::reverse(path.begin(), path.end());
         //从终点问到起点是反的，所以需要反过来
         return path;
+    }
+
+    // 判断坐标是否落在 height 行、width 列的迷宫范围内
+    bool inBounds(const Point& p, int height, int width)
+    {
+        return p.row >= 0 && p.row < height && p.col >= 0 && p.col < width;
+    }
+
+    std::string pointToString(const Point& p)
+    {
+        return "(" + std::to_string(p.row) + "," + std::to_string(p.col) + ")";
+    }
+
+    // 输入检查：不合法就抛异常，避免后面 maze[0]、visited[r][c] 越界访问导致崩溃
+    void validateInput(const MazeGrid& maze, Point start, Point end)
+    {
+        if (maze.empty() || maze[0].empty())
+            throw std::invalid_argument("solveMaze: maze is empty");
+
+        const int height = static_cast<int>(maze.size());
+        const int width = static_cast<int>(maze[0].size());
+        // 每一行的列数必须相同，否则 visited/parent 按 maze[0] 的宽度建表会越界
+        for (const auto& row : maze)
+        {
+            if (static_cast<int>(row.size()) != width)
+                throw std::invalid_argument("solveMaze: maze rows have different lengths");
+        }
+
+        if (!inBounds(start, height, width))
+            throw std::invalid_argument("solveMaze: start " + pointToString(start) + " is out of range");
+        if (!inBounds(end, height, width))
+            throw std::invalid_argument("solveMaze: end " + pointToString(end) + " is out of range");
     }
 }//匿名命名空间
 
@@ -192,6 +226,26 @@ static void solveDFSRecursive(const MazeGrid& maze, Point start, Point end,
 
 // ---------- DFS 非递归版 ----------
 
+/*
+思路：用一个显式的栈，完全模拟递归版的"函数调用栈"。
+
+递归版每进入一个格子，调用栈上就多一层，这一层里记着两件事：
+  1. 当前在哪个格子
+  2. 四个方向已经试到第几个了（for 循环的进度）
+所以这里的栈里存的不是单纯的格子，而是 Frame{格子, 下一个要试的方向}。
+
+每一轮循环只看栈顶：
+  - 从栈顶记录的方向开始，往后找第一个"能走且没访问过"的邻居
+  - 找到了：记下进度，给邻居标记已访问、记父节点，把邻居压栈（相当于递归调用）
+  - 四个方向都试完了：弹栈（相当于函数 return false，回到上一步）
+
+这样两种 DFS 在任何迷宫里（包括有环路的迷宫）访问顺序都一模一样，
+唯一区别是：递归版用的是系统调用栈（大小固定，会溢出），
+这里用的是堆上的 std::stack（可以动态扩容），因此能处理大得多的迷宫。
+
+（旧写法是"弹出一个格子，把所有邻居一次性压栈"，由于栈后进先出，
+ 实际探索顺序变成了 左→下→右→上，和递归版相反，对比数据就不公平了。）
+*/
 static void solveDFSIterative(const MazeGrid& maze, Point start, Point end,
     std::vector<Point>& outPath,
     std::vector<Point>& outVisitedOrder,
@@ -203,32 +257,47 @@ static void solveDFSIterative(const MazeGrid& maze, Point start, Point end,
     std::vector<std::vector<bool>> visited(height, std::vector<bool>(width, false));
     std::vector<std::vector<Point>> parent(height, std::vector<Point>(width, { -1, -1 }));
 
-    std::stack<Point> s;
-    s.push(start);
-    bool found = false;
-
-    while (!s.empty())
+    struct Frame
     {
-        Point cur = s.top();
-        s.pop();
-        //取出栈顶元素
+        Point cell;
+        int nextDir;  // 下一个要尝试的方向在 kAllDirections 中的下标，0~4，4 表示都试完了
+    };
 
-        if (visited[cur.row][cur.col]) continue;
-        visited[cur.row][cur.col] = true;
-        outVisitedOrder.push_back(cur);
-        outParentOf.push_back(parent[cur.row][cur.col]);
+    std::stack<Frame> s;
 
-        if (samePoint(cur, end)) { found = true; break; }
+    // "进入"一个格子：和递归版函数开头做的事完全一样
+    auto enter = [&](Point cell) {
+        visited[cell.row][cell.col] = true;
+        outVisitedOrder.push_back(cell);
+        outParentOf.push_back(parent[cell.row][cell.col]);
+        s.push({ cell, 0 });
+    };
 
-        for (Direction dir : kAllDirections)
+    enter(start);
+    bool found = samePoint(start, end);
+
+    while (!found && !s.empty())
+    {
+        Frame& top = s.top();  // 引用：直接修改栈顶的方向进度
+        bool advanced = false;
+
+        while (top.nextDir < 4)
         {
-            if (!canMove(maze, cur, dir)) continue;
-            Point next = neighborInDirection(cur, dir);
+            Direction dir = kAllDirections[top.nextDir];
+            ++top.nextDir;  // 先推进进度，回溯回来时从下一个方向继续
+
+            if (!canMove(maze, top.cell, dir)) continue;
+            Point next = neighborInDirection(top.cell, dir);
             if (visited[next.row][next.col]) continue;
 
-            parent[next.row][next.col] = cur;
-            s.push(next);
+            parent[next.row][next.col] = top.cell;
+            enter(next);  // 注意：push 之后 top 引用可能失效，所以马上 break
+            advanced = true;
+            if (samePoint(next, end)) found = true;
+            break;
         }
+
+        if (!advanced) s.pop();  // 四个方向都走不通，回溯
     }
 
     outPath = reconstructPath(parent, start, end, found);
@@ -248,6 +317,8 @@ void solveMaze(const MazeGrid& maze,
     outVisitedOrder.clear();
     outParentOf.clear();
 
+    validateInput(maze, start, end);  // 先把三个输出数组清空，再检查输入，不合法直接抛 std::invalid_argument
+
     switch (algo)
     {
     case SolveAlgorithm::BFS:
@@ -259,5 +330,7 @@ void solveMaze(const MazeGrid& maze,
     case SolveAlgorithm::DFS_Iterative:
         solveDFSIterative(maze, start, end, outPath, outVisitedOrder, outParentOf);
         break;
+    default:
+        throw std::invalid_argument("solveMaze: unknown algorithm");
     }
 }
