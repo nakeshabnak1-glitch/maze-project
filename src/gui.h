@@ -42,6 +42,10 @@ public:
 
     Phase phase() const { return phase_; }
 
+    // 紧凑模式：不画底部图例、不强制最小宽度，迷宫最大边长改为 maxCanvas 像素。
+    // 用在"三种算法对比"窗口里，让三个小迷宫可以并排放下。需要在 setMaze 之前调用。
+    void setCompact(bool compact, int maxCanvas = 340);
+
     // 设置起点、终点（画绿点和红点）。和求解结果分开，这样即使终点不可达也能画出来
     void setEndpoints(Point start, Point end);
 
@@ -105,6 +109,9 @@ private:
     QTimer* timer_;          // 定时器指针，用来驱动动画
     int animationStep_ = 0;  // 当前动画播放到第几步
     int stepsPerTick_ = 1;   // 每次定时器触发前进几步（速度很快时一次走多步，避免定时器间隔太短）
+
+    bool compact_ = false;           // 紧凑模式：不画图例
+    int compactMaxCanvas_ = 340;     // 紧凑模式下迷宫最大边长
 
     int cellSize_ = 30;      // 每个格子的像素边长，setMaze 时自动计算
     int offsetX_ = 10;       // 迷宫左上角在控件中的位置

@@ -88,14 +88,25 @@ void MazeWidget::updateGeometryForMaze()
         return;
     }
 
-    cellSize_ = std::clamp(kMaxCanvas / std::max(rows, cols), kMinCellSize, kMaxCellSize);
+    const int maxCanvas = compact_ ? compactMaxCanvas_ : kMaxCanvas;
+    cellSize_ = std::clamp(maxCanvas / std::max(rows, cols), kMinCellSize, kMaxCellSize);
 
     const int mazeW = cols * cellSize_;
     const int mazeH = rows * cellSize_;
-    const int widgetW = std::max(mazeW + 2 * kMargin, kMinWidth);
+    const int minWidth = compact_ ? 0 : kMinWidth;        // 紧凑模式没有图例，不需要最小宽度
+    const int legendHeight = compact_ ? 0 : kLegendHeight;
+    const int widgetW = std::max(mazeW + 2 * kMargin, minWidth);
     offsetX_ = (widgetW - mazeW) / 2;  // 迷宫比图例窄时水平居中
     offsetY_ = kMargin;
-    setFixedSize(widgetW, mazeH + 2 * kMargin + kLegendHeight);
+    setFixedSize(widgetW, mazeH + 2 * kMargin + legendHeight);
+}
+
+void MazeWidget::setCompact(bool compact, int maxCanvas)
+{
+    compact_ = compact;
+    compactMaxCanvas_ = std::max(40, maxCanvas);
+    updateGeometryForMaze();
+    update();
 }
 
 // ---------------- 生成阶段：拆墙回放 ----------------
@@ -341,6 +352,7 @@ void MazeWidget::paintGeneration(QPainter& painter)
 
     paintWalls(painter, genGrid_, wallWidth);
 
+    if (compact_) return;
     drawLegendItem(painter, 0, 0, kCarved, "已打通的格子", false);
     drawLegendItem(painter, 0, 1, kJustBroken, "本步拆墙连通", false);
     drawLegendItem(painter, 0, 2, kWall, "墙壁", true);
@@ -400,7 +412,8 @@ void MazeWidget::paintSolving(QPainter& painter)
         painter.drawEllipse(cellCenter(end_), dotRadius, dotRadius);
     }
 
-    // ---- 图例：画在迷宫下方 ----
+    // ---- 图例：画在迷宫下方（紧凑模式不画） ----
+    if (compact_) return;
     drawLegendItem(painter, 0, 0, kStart, "起点（左键设置）", false);
     drawLegendItem(painter, 0, 1, kEnd, "终点（右键设置）", false);
     drawLegendItem(painter, 0, 2, kCurrent, "当前探索格", false);

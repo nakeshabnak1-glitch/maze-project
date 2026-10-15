@@ -1,5 +1,6 @@
 #include "main_window.h"
 #include "gui.h"
+#include "compare_dialog.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -97,8 +98,11 @@ QWidget* MainWindow::buildControlPanel()
     solveAlgoCombo_->addItem("DFS 非递归（显式栈）", static_cast<int>(SolveAlgorithm::DFS_Iterative));
     auto* solveHint = new QLabel("切换算法会在同一个迷宫上重新求解，\n方便直接对比。", solveGroup);
     solveHint->setStyleSheet("color: #666;");
+    compareButton_ = new QPushButton("三种算法对比…", solveGroup);
+    compareButton_->setToolTip("在当前迷宫、当前起终点上同时运行三种算法，\n并排播放并列出访问格数、路径长度、耗时");
     solveLayout->addWidget(solveAlgoCombo_);
     solveLayout->addWidget(solveHint);
+    solveLayout->addWidget(compareButton_);
 
     // ---------- 3. 动画控制 ----------
     auto* playGroup = new QGroupBox("动画控制", panel);
@@ -160,6 +164,7 @@ QWidget* MainWindow::buildControlPanel()
     connect(generateButton_, &QPushButton::clicked, this,
         [this]() { regenerateMaze(animateGenCheck_->isChecked()); });
     connect(solveAlgoCombo_, &QComboBox::currentIndexChanged, this, [this](int) { solveCurrentMaze(); });
+    connect(compareButton_, &QPushButton::clicked, this, &MainWindow::openCompareDialog);
     connect(speedSlider_, &QSlider::valueChanged, this, &MainWindow::onSpeedChanged);
     connect(playButton_, &QPushButton::clicked, this, [this]() {
         if (mazeWidget_->isPlaying()) mazeWidget_->pause();
@@ -262,6 +267,19 @@ void MainWindow::onAnimationFinished()
         updatePlayButton();
         updateStats();
     }
+}
+
+void MainWindow::openCompareDialog()
+{
+    if (maze_.empty()) return;
+    mazeWidget_->pause();  // 主窗口的动画先停下，避免两边同时在跑
+
+    const int cells = static_cast<int>(maze_.size() * maze_[0].size());
+    const QString description = QString("%1 行 × %2 列，%3 生成")
+        .arg(maze_.size()).arg(maze_[0].size()).arg(algorithmName(genAlgo_));
+
+    CompareDialog dialog(maze_, start_, end_, description, cells <= kMaxCellsForRecursiveDfs, this);
+    dialog.exec();  // 模态窗口：关闭后才回到主窗口
 }
 
 void MainWindow::onCellClicked(Point cell, Qt::MouseButton button)

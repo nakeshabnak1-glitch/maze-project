@@ -20,7 +20,8 @@ class QLabel;
  *
  * 控制面板分四组：
  *   1. 迷宫设置：宽、高、生成算法、"播放生成过程"勾选框、"生成新迷宫"按钮
- *   2. 求解算法：BFS / DFS递归 / DFS非递归（切换后在"同一个迷宫"上重新求解，方便对比）
+ *   2. 求解算法：BFS / DFS递归 / DFS非递归（切换后在"同一个迷宫"上重新求解，方便对比），
+ *      以及"三种算法对比"按钮（打开 CompareDialog，三个迷宫并排 + 数据表）
  *   3. 动画控制：速度滑块、播放/暂停、单步、跳到结尾、重置
  *   4. 统计信息：生成和求解两个阶段的进度、耗时、访问格数、路径长度
  *
@@ -43,6 +44,7 @@ private:
     void solveCurrentMaze();               // 用当前算法求解当前迷宫（不重新生成）
     void pushSolutionToWidget();           // 把求解结果交给 MazeWidget，进入求解阶段
     void onAnimationFinished();            // 某个阶段播完：生成阶段播完就自动切到求解阶段
+    void openCompareDialog();              // 打开"三种算法对比"窗口（同一迷宫、同一起终点）
     void onCellClicked(Point cell, Qt::MouseButton button);  // 左键设起点，右键设终点
     void onSpeedChanged(int sliderValue);
     void updatePlayButton();
@@ -67,6 +69,7 @@ private:
     QPushButton* generateButton_ = nullptr;
 
     QComboBox* solveAlgoCombo_ = nullptr;
+    QPushButton* compareButton_ = nullptr;
 
     QSlider* speedSlider_ = nullptr;
     QLabel* speedLabel_ = nullptr;
