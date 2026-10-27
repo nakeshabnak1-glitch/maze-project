@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
 
     std::ofstream csv(csvPath);
     if (!csv) {
-        std::cerr << "无法打开输出文件: " << csvPath << "\n";
+        std::cerr << "Cannot open output file: " << csvPath << "\n";
         return 1;
     }
     csv << "phase,algo,width,height,trial,time_us,visited,path_len\n";
@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
     std::uint64_t sink = 0; // 防止编译器把"结果没用到"的计算优化掉
 
     for (int side : sizes) {
-        std::cout << "测试规模 " << side << "x" << side << " ..." << std::endl;
+        std::cout << "Testing size " << side << "x" << side << " ..." << std::endl;
         for (int trial = 0; trial < trials; ++trial) {
             MazeGrid forSolve;
 
@@ -87,8 +87,8 @@ int main(int argc, char** argv) {
     }
 
     csv.close();
-    std::cout << "完成。结果已保存到: "
+    std::cout << "Done. Results saved to: "
               << std::filesystem::absolute(csvPath).string() << "\n";
-    std::cout << "(校验值 " << sink << "，无需关注)\n";
+    std::cout << "(checksum " << sink << ", ignore)\n";
     return 0;
 }
