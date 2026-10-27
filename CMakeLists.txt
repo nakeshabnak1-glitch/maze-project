@@ -20,3 +20,9 @@ file(GLOB SRC_FILES src/*.cpp)
 add_executable(maze_project main.cpp ${SRC_FILES})
 
 target_link_libraries(maze_project PRIVATE Qt6::Widgets)
+add_executable(perf_test
+    test/performance_test.cpp
+    src/maze_generator.cpp
+    src/maze_solver.cpp)
+target_include_directories(perf_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(perf_test PRIVATE cxx_std_17)
