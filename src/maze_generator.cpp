@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <limits>
 #include <numeric>
 #include <queue>
@@ -168,7 +169,7 @@ struct CandidateWall
     InternalDirection direction;
 };
 
-MazeGrid generateKruskal(int width, int height, std::vector<WallBreak>* steps)
+MazeGrid generateKruskal(int width, int height, std::vector<WallBreak>* steps, std::mt19937& randomEngine)
 {
     // 先检查尺寸，再进行无符号转换和乘法，避免非法尺寸或编号溢出。
     if (width <= 0 || height <= 0)
@@ -194,8 +195,7 @@ MazeGrid generateKruskal(int width, int height, std::vector<WallBreak>* steps)
         }
     }
 
-    // 每次调用使用局部随机引擎，不保存全局生成状态。
-    std::mt19937 randomEngine(std::random_device{}());
+    // 使用本次调用传入的局部随机引擎，不保存全局状态。
     std::shuffle(walls.begin(), walls.end(), randomEngine);
 
     UnionFind sets(cellCount);
@@ -258,7 +258,7 @@ void addPrimWalls(int row, int col, int width, int height,
         walls.push({row, col, row, col - 1, InternalDirection::Left, randomEngine()});
 }
 
-MazeGrid generatePrim(int width, int height, std::vector<WallBreak>* steps)
+MazeGrid generatePrim(int width, int height, std::vector<WallBreak>* steps, std::mt19937& randomEngine)
 {
     if (width <= 0 || height <= 0)
         throw std::invalid_argument("Maze width and height must be positive");
@@ -270,7 +270,7 @@ MazeGrid generatePrim(int width, int height, std::vector<WallBreak>* steps)
 
     MazeGrid maze = createMaze(width, height);
     std::vector<std::vector<bool>> visited(rows, std::vector<bool>(columns, false));
-    std::mt19937 randomEngine(std::random_device{}());
+
     const int startRow = std::uniform_int_distribution<int>(0, height - 1)(randomEngine);
     const int startCol = std::uniform_int_distribution<int>(0, width - 1)(randomEngine);
     visited[startRow][startCol] = true;
@@ -297,37 +297,87 @@ MazeGrid generatePrim(int width, int height, std::vector<WallBreak>* steps)
         throw std::logic_error("Prim did not connect all cells");
     return maze;
 }
-// 两个公共入口共用分发和算法，空指针表示不收集过程记录。
+// 生成树完成后只收集仍存在的内部墙，每面墙只收集一次。
+void addLoops(MazeGrid& maze, int width, int height, double loopRate,
+              std::mt19937& randomEngine, std::vector<WallBreak>* steps)
+{
+    if (loopRate == 0.0) return;
+    std::vector<CandidateWall> remaining;
+    for (int row = 0; row < height; ++row)
+        for (int col = 0; col < width; ++col)
+        {
+            if (col < width - 1 && maze[row][col].wallRight)
+                remaining.push_back({row, col, InternalDirection::Right});
+            if (row < height - 1 && maze[row][col].wallBottom)
+                remaining.push_back({row, col, InternalDirection::Down});
+        }
+    if (remaining.empty()) return;
+    const auto count = loopRate == 1.0 ? remaining.size()
+        : static_cast<std::size_t>(std::floor(loopRate * static_cast<double>(remaining.size())));
+    if (count == 0) return;
+    std::shuffle(remaining.begin(), remaining.end(), randomEngine);
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const auto& wall = remaining[i];
+        if (!removeWall(maze, wall.row, wall.col, wall.direction, steps))
+            throw std::logic_error("Invalid extra wall");
+    }
+}
+
+// 所有公共入口共用算法和局部随机引擎，记录与否不影响随机数序列。
 MazeGrid generateMazeInternal(int width, int height, GenAlgorithm algo,
+                              unsigned seed, double loopRate,
                               std::vector<WallBreak>* steps)
 {
     if (width <= 0 || height <= 0)
         throw std::invalid_argument("Maze width and height must be positive");
+    if (!std::isfinite(loopRate) || loopRate < 0.0 || loopRate > 1.0)
+        throw std::invalid_argument("Loop rate must be finite and between 0 and 1");
 
+    std::mt19937 randomEngine(seed);
+    MazeGrid maze;
     switch (algo)
     {
     case GenAlgorithm::Kruskal:
-        return generateKruskal(width, height, steps);
+        maze = generateKruskal(width, height, steps, randomEngine);
+        break;
     case GenAlgorithm::Prim:
-        return generatePrim(width, height, steps);
+        maze = generatePrim(width, height, steps, randomEngine);
+        break;
     default:
         throw std::invalid_argument("Unknown maze generation algorithm");
     }
+    addLoops(maze, width, height, loopRate, randomEngine, steps);
+    return maze;
 }
 } // 匿名命名空间：以上辅助类型和函数仅在当前源文件内可用。
 
 MazeGrid generateMaze(int width, int height, GenAlgorithm algo)
 {
-    return generateMazeInternal(width, height, algo, nullptr);
+    return generateMaze(width, height, algo, std::random_device{}(), 0.0);
+}
+
+MazeGrid generateMaze(int width, int height, GenAlgorithm algo,
+                      unsigned seed, double loopRate)
+{
+    return generateMazeInternal(width, height, algo, seed, loopRate, nullptr);
 }
 
 MazeGrid generateMazeWithSteps(int width, int height, GenAlgorithm algo,
                                std::vector<WallBreak>& outSteps)
 {
     outSteps.clear();
-    // 成功后再交付记录；生成中途抛出异常时，外部不会拿到不完整记录。
+    return generateMazeWithSteps(width, height, algo, outSteps, std::random_device{}(), 0.0);
+}
+
+MazeGrid generateMazeWithSteps(int width, int height, GenAlgorithm algo,
+                               std::vector<WallBreak>& outSteps,
+                               unsigned seed, double loopRate)
+{
+    outSteps.clear();
+    // 成功后再交付记录，异常时不暴露部分生成过程。
     std::vector<WallBreak> steps;
-    MazeGrid maze = generateMazeInternal(width, height, algo, &steps);
+    MazeGrid maze = generateMazeInternal(width, height, algo, seed, loopRate, &steps);
     outSteps.swap(steps);
     return maze;
 }
