@@ -26,3 +26,10 @@ add_executable(perf_test
     src/maze_solver.cpp)
 target_include_directories(perf_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_features(perf_test PRIVATE cxx_std_17)
+# ---- 正确性测试(不链接 Qt) ----
+add_executable(correctness_test
+    test/correctness_test.cpp
+    src/maze_generator.cpp
+    src/maze_solver.cpp)
+target_include_directories(correctness_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_features(correctness_test PRIVATE cxx_std_17)
