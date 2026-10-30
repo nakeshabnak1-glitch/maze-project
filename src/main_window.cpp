@@ -1,6 +1,7 @@
 #include "main_window.h"
 #include "gui.h"
 #include "compare_dialog.h"
+#include "gen_compare_dialog.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -82,26 +83,39 @@ QWidget* MainWindow::buildControlPanel()
     animateGenCheck_->setToolTip("勾选后，点\"生成新迷宫\"会先从全是墙的网格开始，\n按生成算法的顺序一面一面拆墙，播完再进入求解");
 
     generateButton_ = new QPushButton("生成新迷宫", mazeGroup);
+    generateButton_->setObjectName("primaryButton");  // 主题里的深红主按钮样式
 
     mazeForm->addRow("宽度：", widthSpin_);
     mazeForm->addRow("高度：", heightSpin_);
     mazeForm->addRow("生成算法：", genAlgoCombo_);
     mazeForm->addRow(animateGenCheck_);
-    mazeForm->addRow(generateButton_);
+    // "生成算法对比"和"生成新迷宫"放在同一行，不增加面板高度
+    auto* genCompareButton = new QPushButton("生成算法对比…", mazeGroup);
+    genCompareButton->setToolTip("用当前宽高，把 Kruskal 和 Prim 并排生成、同步播放，并统计多个迷宫的平均指标");
+    auto* generateRow = new QHBoxLayout();
+    generateRow->addWidget(generateButton_, 1);
+    generateRow->addWidget(genCompareButton, 1);
+    mazeForm->addRow(generateRow);
+    connect(genCompareButton, &QPushButton::clicked, this, [this]() {
+        mazeWidget_->pause();
+        GenCompareDialog dialog(widthSpin_->value(), heightSpin_->value(), this);
+        dialog.exec();
+    });
 
     // ---------- 2. 求解算法 ----------
     auto* solveGroup = new QGroupBox("求解算法", panel);
     auto* solveLayout = new QVBoxLayout(solveGroup);
     solveAlgoCombo_ = new QComboBox(solveGroup);
-    solveAlgoCombo_->addItem("BFS 广度优先", static_cast<int>(SolveAlgorithm::BFS));
+    // 课程要求 BFS、DFS 都要有递归和非递归两种写法
+    solveAlgoCombo_->addItem("BFS 非递归（显式队列）", static_cast<int>(SolveAlgorithm::BFS));
+    solveAlgoCombo_->addItem("BFS 递归（逐层递归）", static_cast<int>(SolveAlgorithm::BFS_Recursive));
     solveAlgoCombo_->addItem("DFS 递归", static_cast<int>(SolveAlgorithm::DFS_Recursive));
     solveAlgoCombo_->addItem("DFS 非递归（显式栈）", static_cast<int>(SolveAlgorithm::DFS_Iterative));
-    auto* solveHint = new QLabel("切换算法会在同一个迷宫上重新求解，\n方便直接对比。", solveGroup);
-    solveHint->setStyleSheet("color: #666;");
-    compareButton_ = new QPushButton("三种算法对比…", solveGroup);
-    compareButton_->setToolTip("在当前迷宫、当前起终点上同时运行三种算法，\n并排播放并列出访问格数、路径长度、耗时");
+    // 说明放进鼠标悬停提示，省出面板高度
+    solveAlgoCombo_->setToolTip("切换算法会在同一个迷宫上重新求解，方便直接对比");
+    compareButton_ = new QPushButton("求解算法对比…", solveGroup);
+    compareButton_->setToolTip("在当前迷宫、当前起终点上同时运行四种求解算法，\n并排播放并列出访问格数、路径长度、耗时");
     solveLayout->addWidget(solveAlgoCombo_);
-    solveLayout->addWidget(solveHint);
     solveLayout->addWidget(compareButton_);
 
     // ---------- 3. 动画控制 ----------
@@ -119,6 +133,7 @@ QWidget* MainWindow::buildControlPanel()
     speedRow->addWidget(speedLabel_);
 
     playButton_ = new QPushButton("播放", playGroup);
+    playButton_->setObjectName("accentButton");       // 主题里的钢蓝按钮样式
     stepButton_ = new QPushButton("单步", playGroup);
     skipButton_ = new QPushButton("跳到结尾", playGroup);
     resetButton_ = new QPushButton("重置", playGroup);
@@ -139,25 +154,29 @@ QWidget* MainWindow::buildControlPanel()
     statsLabel_->setMinimumWidth(260);
     statsLabel_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     // 固定能放下 10 行的高度：生成阶段行数少、求解阶段行数多，这样切换阶段时窗口不会忽高忽低
-    statsLabel_->setMinimumHeight(10 * (statsLabel_->fontMetrics().lineSpacing() + 4));
+    statsLabel_->setMinimumHeight(9 * (statsLabel_->fontMetrics().lineSpacing() + 3));
     statsLayout->addWidget(statsLabel_);
 
     // ---------- 提示 ----------
     noticeLabel_ = new QLabel(panel);
     noticeLabel_->setWordWrap(true);
     noticeLabel_->setMaximumWidth(280);
-    noticeLabel_->setStyleSheet("color: #b8860b;");
+    noticeLabel_->setStyleSheet("color: #D98E04;");
     noticeLabel_->hide();
 
-    auto* tip = new QLabel("提示：在迷宫上 左键点击 设置起点，\n右键点击 设置终点。", panel);
-    tip->setStyleSheet("color: #666;");
+
+    // 顶部标题：项目名 + 同一行的小字副标题
+    auto* title = new QLabel(
+        "<span style='font-size:15pt; font-weight:bold; color:#5A3E2B;'>算法实验室</span>"
+        "&nbsp;&nbsp;<span style='color:#E08A2E;'>Kruskal · Prim ／ BFS · DFS</span>", panel);
+    title->setTextFormat(Qt::RichText);
+    panelLayout->addWidget(title);
 
     panelLayout->addWidget(mazeGroup);
     panelLayout->addWidget(solveGroup);
     panelLayout->addWidget(playGroup);
     panelLayout->addWidget(statsGroup);
     panelLayout->addWidget(noticeLabel_);
-    panelLayout->addWidget(tip);
     panelLayout->addStretch();
 
     // ---- 控件信号 -> 槽 ----
@@ -290,35 +309,45 @@ void MainWindow::onCellClicked(Point cell, Qt::MouseButton button)
     solveCurrentMaze();  // 起终点变了，立刻重新求解
 }
 
-// 迷宫太大时把"DFS 递归"选项变灰，如果当前正选着它就自动切到非递归版
+// 迷宫太大时把两个递归版（BFS 递归、DFS 递归）变灰，如果当前正选着其中一个，就自动切到对应的非递归版
 void MainWindow::updateRecursiveDfsAvailability()
 {
     // 用迷宫的实际大小判断（而不是输入框的值：用户可能改了输入框但还没点"生成新迷宫"）
     const int cells = maze_.empty() ? 0 : static_cast<int>(maze_.size() * maze_[0].size());
     const bool allowed = cells <= kMaxCellsForRecursiveDfs;
 
-    const int recursiveIndex = solveAlgoCombo_->findData(static_cast<int>(SolveAlgorithm::DFS_Recursive));
-    if (auto* model = qobject_cast<QStandardItemModel*>(solveAlgoCombo_->model()))
+    // 递归版 -> 对应的非递归版
+    const std::pair<SolveAlgorithm, SolveAlgorithm> recursivePairs[] = {
+        { SolveAlgorithm::BFS_Recursive, SolveAlgorithm::BFS },
+        { SolveAlgorithm::DFS_Recursive, SolveAlgorithm::DFS_Iterative },
+    };
+
+    bool switched = false;
+    for (const auto& [recursive, iterative] : recursivePairs)
     {
-        if (QStandardItem* item = model->item(recursiveIndex))
+        const int index = solveAlgoCombo_->findData(static_cast<int>(recursive));
+        if (auto* model = qobject_cast<QStandardItemModel*>(solveAlgoCombo_->model()))
         {
-            item->setEnabled(allowed);
-            item->setToolTip(allowed ? QString() : "迷宫超过 50×50 格时递归深度可能超出系统栈，已禁用");
+            if (QStandardItem* item = model->item(index))
+            {
+                item->setEnabled(allowed);
+                item->setToolTip(allowed ? QString() : "迷宫超过 50×50 格时递归深度可能超出系统栈，已禁用");
+            }
+        }
+        if (!allowed && solveAlgoCombo_->currentIndex() == index)
+        {
+            // 这里改下拉框会触发 currentIndexChanged -> solveCurrentMaze，
+            // regenerateMaze 随后还会再求解一次，多算一次不影响结果
+            solveAlgoCombo_->setCurrentIndex(solveAlgoCombo_->findData(static_cast<int>(iterative)));
+            switched = true;
         }
     }
 
-    if (!allowed && solveAlgoCombo_->currentIndex() == recursiveIndex)
+    if (!allowed)
     {
-        // 这里改下拉框会触发 currentIndexChanged -> solveCurrentMaze，
-        // regenerateMaze 随后还会再求解一次，多算一次不影响结果
-        solveAlgoCombo_->setCurrentIndex(
-            solveAlgoCombo_->findData(static_cast<int>(SolveAlgorithm::DFS_Iterative)));
-        noticeLabel_->setText("迷宫超过 50×50 格，递归 DFS 可能栈溢出，已自动切换为 DFS 非递归。");
-        noticeLabel_->show();
-    }
-    else if (!allowed)
-    {
-        noticeLabel_->setText("迷宫超过 50×50 格，已禁用递归 DFS（递归深度可能超出系统栈）。");
+        noticeLabel_->setText(switched
+            ? "迷宫超过 50×50 格，递归版可能栈溢出，已自动切换为对应的非递归版。"
+            : "迷宫超过 50×50 格，已禁用两个递归版（递归深度可能超出系统栈）。");
         noticeLabel_->show();
     }
     else
@@ -367,16 +396,15 @@ void MainWindow::updateStats()
     const int step = mazeWidget_->currentStep();
     const bool generating = inGenerationPhase();
 
-    QString html = "<table cellspacing='3'>";
+    QString html = "<table cellspacing='2'>";
     auto row = [&html](const QString& key, const QString& value) {
         html += QString("<tr><td>%1</td><td>%2</td></tr>").arg(key, value);
     };
-    const QString gray = "<span style='color:#888;'>%1</span>";
+    const QString gray = "<span style='color:#A08770;'>%1</span>";
 
     row("当前阶段：", generating ? "<b>生成迷宫</b>" : "<b>求解迷宫</b>");
     row("迷宫规模：", QString("%1 行 × %2 列（共 %3 格）").arg(rows).arg(cols).arg(totalCells));
-    row("生成算法：", QString("%1，拆墙 %2 次").arg(algorithmName(genAlgo_)).arg(genStepCount_));
-    row("生成耗时：", QString("%1 µs ").arg(genMicros_, 0, 'f', 1) + gray.arg("（不含动画）"));
+    row("生成算法：", QString("%1，拆墙 %2 次，%3 µs").arg(algorithmName(genAlgo_)).arg(genStepCount_).arg(genMicros_, 0, 'f', 0));
 
     if (generating)
     {
@@ -388,7 +416,7 @@ void MainWindow::updateStats()
         const int visitedTotal = static_cast<int>(visitedOrder_.size());
         const double percent = totalCells > 0 ? 100.0 * visitedTotal / totalCells : 0.0;
         const QString pathText = path_.empty()
-            ? QString("<span style='color:#b22222;'>终点不可达</span>")
+            ? QString("<span style='color:#E84A5F;'>终点不可达</span>")
             : QString("%1 格").arg(path_.size());
 
         row("求解算法：", "<b>" + algorithmName(currentSolveAlgorithm()) + "</b>");
@@ -413,7 +441,8 @@ QString MainWindow::algorithmName(SolveAlgorithm algo)
 {
     switch (algo)
     {
-    case SolveAlgorithm::BFS:           return "BFS";
+    case SolveAlgorithm::BFS:           return "BFS 非递归";
+    case SolveAlgorithm::BFS_Recursive: return "BFS 递归";
     case SolveAlgorithm::DFS_Recursive: return "DFS 递归";
     case SolveAlgorithm::DFS_Iterative: return "DFS 非递归";
     }

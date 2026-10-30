@@ -8,6 +8,7 @@
 
 class QMouseEvent;
 class QPainter;
+class QVariantAnimation;
 
 /*
  * MazeWidget：只负责两件事 ——"画迷宫"和"播放求解动画"。
@@ -43,7 +44,7 @@ public:
     Phase phase() const { return phase_; }
 
     // 紧凑模式：不画底部图例、不强制最小宽度，迷宫最大边长改为 maxCanvas 像素。
-    // 用在"三种算法对比"窗口里，让三个小迷宫可以并排放下。需要在 setMaze 之前调用。
+    // 用在算法对比窗口里，让几个小迷宫可以并排放下。需要在 setMaze 之前调用。
     void setCompact(bool compact, int maxCanvas = 340);
 
     // 设置起点、终点（画绿点和红点）。和求解结果分开，这样即使终点不可达也能画出来
@@ -86,6 +87,11 @@ private:
     void paintSolving(QPainter& painter);
     void paintWalls(QPainter& painter, const MazeGrid& grid, int wallWidth);
     void drawLegendItem(QPainter& painter, int row, int col, QColor color, const QString& label, bool isLine);
+    void drawHeatLegend(QPainter& painter, int row, int col);   // 热力图色带图例
+    void computeDepths();                    // 求解阶段：算出每个访问格离起点的步数，用于热力图上色
+    void startFinishEffects();               // 求解播完：启动"路径描线"和"终点脉冲"动画
+    void stopFinishEffects();                // 重置/重新求解时停止上述动画
+    void drawPath(QPainter& painter, int pathWidth);  // 画（可能只画了一部分的）最终路径，带光晕
     QPoint cellCenter(Point p) const;        // 格子坐标 -> 屏幕像素坐标（格子中心）
     bool cellAt(const QPoint& pos, Point& out) const;  // 屏幕像素坐标 -> 格子坐标
 
@@ -105,6 +111,14 @@ private:
     std::vector<Point> path_;
     std::vector<Point> visitedOrder_;
     std::vector<Point> parentOf_;
+
+    // ---- 视觉效果 ----
+    std::vector<int> depth_;   // depth_[i]：visitedOrder_[i] 离起点的步数（沿父节点链），热力图按它上色
+    int maxDepth_ = 1;
+    QVariantAnimation* pathAnim_ = nullptr;   // 最终路径从起点"画"到终点，pathProgress_ 从 0 到 1
+    double pathProgress_ = 0.0;
+    QVariantAnimation* pulseAnim_ = nullptr;  // 终点的扩散脉冲环，pulse_ 从 0 到 1 循环几次
+    double pulse_ = -1.0;                     // <0 表示不画脉冲
 
     QTimer* timer_;          // 定时器指针，用来驱动动画
     int animationStep_ = 0;  // 当前动画播放到第几步

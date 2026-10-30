@@ -1,12 +1,14 @@
 #include <QApplication>
-#include "src/main_window.h"
+#include "src/app_window.h"
+#include "src/theme.h"
 
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
+    applyAppTheme(app);  // 卡通主题：配色和样式统一在 src/theme.h 里
 
-    // 生成迷宫、选择算法、求解、播放动画，全部由主窗口左侧的控制面板完成
-    MainWindow window;
+    // 两个页签：闯关冒险（玩家自己走迷宫）+ 算法实验室（生成/求解动画与算法对比）
+    AppWindow window;
     window.show();
 
     return app.exec();//事件循环

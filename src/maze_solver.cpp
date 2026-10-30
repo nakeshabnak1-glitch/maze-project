@@ -168,6 +168,68 @@ static void solveBFS(const MazeGrid& maze, Point start, Point end,
     outPath = reconstructPath(parent, start, end, found);
 }
 
+// ---------- BFS 递归版 ----------
+
+/*
+BFS 的递归写法：不用队列，而是"一层一层"地递归。
+
+队列版 BFS 的本质是按距离分层：先处理离起点 0 步的格子，再处理 1 步的，再处理 2 步的……
+递归版把"一层"当作一次函数调用：
+  - 参数 frontier 是当前这一圈格子（离起点距离相同），按入队的先后顺序排好
+  - 依次处理这一圈里的每个格子：记录访问；如果是终点就结束；
+    否则把它还没访问过的邻居（按 上→右→下→左）追加到 next（下一圈）
+  - 这一圈处理完后，如果 next 不空，就递归处理 next
+
+因为每圈内部的顺序、追加邻居的顺序都和队列版完全一样，
+所以访问顺序、父节点、最终路径都和队列版逐格相同，可以直接对比两种写法的性能差异。
+
+递归深度 = 层数 = 起点到最远访问格的步数。完美迷宫里这个距离可能接近格子总数，
+所以大迷宫上递归 BFS 和递归 DFS 一样有栈溢出风险（GUI 里会一起限制规模）。
+*/
+static bool bfsRecursiveLevel(const MazeGrid& maze, const std::vector<Point>& frontier, Point end,
+    std::vector<std::vector<bool>>& visited,
+    std::vector<std::vector<Point>>& parent,
+    std::vector<Point>& outVisitedOrder,
+    std::vector<Point>& outParentOf)
+{
+    std::vector<Point> next;  // 下一圈
+    for (const Point& cur : frontier)
+    {
+        outVisitedOrder.push_back(cur);
+        outParentOf.push_back(parent[cur.row][cur.col]);
+        if (samePoint(cur, end)) return true;
+
+        for (Direction dir : kAllDirections)
+        {
+            if (!canMove(maze, cur, dir)) continue;
+            Point nb = neighborInDirection(cur, dir);
+            if (visited[nb.row][nb.col]) continue;
+
+            visited[nb.row][nb.col] = true;   // 和队列版一样：入"队"时就标记，避免重复加入
+            parent[nb.row][nb.col] = cur;
+            next.push_back(nb);
+        }
+    }
+    if (next.empty()) return false;          // 没有下一圈了：终点不可达
+    return bfsRecursiveLevel(maze, next, end, visited, parent, outVisitedOrder, outParentOf);
+}
+
+static void solveBFSRecursive(const MazeGrid& maze, Point start, Point end,
+    std::vector<Point>& outPath,
+    std::vector<Point>& outVisitedOrder,
+    std::vector<Point>& outParentOf)
+{
+    const int height = static_cast<int>(maze.size());
+    const int width = static_cast<int>(maze[0].size());
+
+    std::vector<std::vector<bool>> visited(height, std::vector<bool>(width, false));
+    std::vector<std::vector<Point>> parent(height, std::vector<Point>(width, { -1, -1 }));
+
+    visited[start.row][start.col] = true;
+    const bool found = bfsRecursiveLevel(maze, { start }, end, visited, parent, outVisitedOrder, outParentOf);
+    outPath = reconstructPath(parent, start, end, found);
+}
+
 // ---------- DFS 递归版 ----------
 
 /*
@@ -326,6 +388,9 @@ void solveMaze(const MazeGrid& maze,
         break;
     case SolveAlgorithm::DFS_Recursive:
         solveDFSRecursive(maze, start, end, outPath, outVisitedOrder,outParentOf);
+        break;
+    case SolveAlgorithm::BFS_Recursive:
+        solveBFSRecursive(maze, start, end, outPath, outVisitedOrder, outParentOf);
         break;
     case SolveAlgorithm::DFS_Iterative:
         solveDFSIterative(maze, start, end, outPath, outVisitedOrder, outParentOf);

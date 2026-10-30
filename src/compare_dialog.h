@@ -13,7 +13,7 @@ class QLabel;
 class QTableWidget;
 
 /*
- * CompareDialog："三种算法对比"窗口。
+ * CompareDialog："求解算法对比"窗口（BFS、DFS 各自的递归与非递归版）。
  *
  * 在【同一个迷宫、同一对起终点】上分别运行 BFS、DFS 递归、DFS 非递归：
  *   - 上半部分：三个小迷宫并排，可以同步播放探索过程（谁访问的格子多一眼就能看出来）
@@ -27,7 +27,7 @@ class CompareDialog : public QDialog
     Q_OBJECT
 
 public:
-    // allowRecursive=false 时（迷宫过大）不运行递归 DFS，避免栈溢出崩溃
+    // allowRecursive=false 时（迷宫过大）不运行两个递归版，避免栈溢出崩溃
     CompareDialog(const MazeGrid& maze, Point start, Point end,
                   const QString& mazeDescription, bool allowRecursive,
                   QWidget* parent = nullptr);
@@ -37,7 +37,7 @@ private:
     {
         SolveAlgorithm algo = SolveAlgorithm::BFS;
         QString name;
-        bool ran = false;              // 是否实际运行（递归 DFS 在大迷宫上会跳过）
+        bool ran = false;              // 是否实际运行（递归版在大迷宫上会跳过）
         std::vector<Point> path;
         std::vector<Point> visitedOrder;
         std::vector<Point> parentOf;
@@ -45,7 +45,7 @@ private:
         int repeats = 0;               // 计时重复次数
     };
 
-    void runAll();                     // 运行三种算法并计时
+    void runAll();                     // 运行各个求解算法并计时
     void buildTable();                 // 填写数据表
     QString buildSummary() const;      // 一句话结论
     void updateButtons();

@@ -43,12 +43,13 @@ CompareDialog::CompareDialog(const MazeGrid& maze, Point start, Point end,
                              const QString& mazeDescription, bool allowRecursive, QWidget* parent)
     : QDialog(parent), maze_(maze), start_(start), end_(end), allowRecursive_(allowRecursive)
 {
-    setWindowTitle("三种求解算法对比（同一迷宫、同一起终点）");
+    setWindowTitle("求解算法对比：BFS / DFS 的递归与非递归版（同一迷宫、同一起终点）");
 
     const std::pair<SolveAlgorithm, QString> algos[] = {
-        { SolveAlgorithm::BFS,           "BFS 广度优先" },
+        { SolveAlgorithm::BFS,           "BFS 非递归（队列）" },
+        { SolveAlgorithm::BFS_Recursive, "BFS 递归" },
         { SolveAlgorithm::DFS_Recursive, "DFS 递归" },
-        { SolveAlgorithm::DFS_Iterative, "DFS 非递归（显式栈）" },
+        { SolveAlgorithm::DFS_Iterative, "DFS 非递归（栈）" },
     };
     for (const auto& [algo, name] : algos)
     {
@@ -60,12 +61,13 @@ CompareDialog::CompareDialog(const MazeGrid& maze, Point start, Point end,
     runAll();
 
     auto* layout = new QVBoxLayout(this);
+    layout->setSizeConstraint(QLayout::SetFixedSize);  // 窗口大小按内容固定，迷宫不会被挤压重叠
 
     auto* header = new QLabel(QString("迷宫：%1　　起点 (%2,%3) → 终点 (%4,%5)")
         .arg(mazeDescription).arg(start_.row).arg(start_.col).arg(end_.row).arg(end_.col), this);
     layout->addWidget(header);
 
-    // ---------- 三个小迷宫并排 ----------
+    // ---------- 四个小迷宫并排 ----------
     auto* viewsRow = new QHBoxLayout();
     std::vector<QLabel*> captions;
     for (const Result& r : results_)
@@ -81,7 +83,7 @@ CompareDialog::CompareDialog(const MazeGrid& maze, Point start, Point end,
         if (r.ran)
         {
             auto* view = new MazeWidget(this);
-            view->setCompact(true, 340);
+            view->setCompact(true, 250);   // 四个并排，每个小一点
             view->setMaze(maze_);
             view->setEndpoints(start_, end_);
             view->setSolution(r.path, r.visitedOrder, r.parentOf);
@@ -102,10 +104,11 @@ CompareDialog::CompareDialog(const MazeGrid& maze, Point start, Point end,
         }
         else
         {
-            auto* placeholder = new QLabel("迷宫超过 50×50 格\n递归 DFS 可能栈溢出\n已跳过", this);
+            auto* placeholder = new QLabel("迷宫超过 50×50 格\n递归版可能栈溢出\n已跳过", this);
             placeholder->setAlignment(Qt::AlignCenter);
             placeholder->setMinimumSize(200, 200);
-            placeholder->setStyleSheet("color: #b8860b; border: 1px dashed #ccc;");
+            placeholder->setWordWrap(true);
+            placeholder->setStyleSheet("color: #D98E04; border: 1px dashed #F0D9B5; border-radius: 8px;");
             column->addWidget(placeholder);
             views_.push_back(nullptr);
         }
@@ -183,10 +186,10 @@ CompareDialog::CompareDialog(const MazeGrid& maze, Point start, Point end,
     auto* note = new QLabel(
         "说明：① 耗时为重复运行多次后的单次平均值，只计算求解算法本身，不含动画；"
         "Debug 和 Release 编译下的数值会差很多，对比时请用同一种编译方式。<br>"
-        "② 完美迷宫中任意两点之间只有一条路径，所以三种算法找到的路径一定相同；"
+        "② 完美迷宫中任意两点之间只有一条路径，所以几种算法找到的路径一定相同；"
         "要体现 BFS \"保证最短路径\"的优势，需要在带环路的迷宫上对比。", this);
     note->setWordWrap(true);
-    note->setStyleSheet("color: #777;");
+    note->setStyleSheet("color: #A08770;");
     layout->addWidget(note);
 
     // 自己建"关闭"按钮：Qt 自带的标准按钮在没加载翻译时显示英文 "Close"
@@ -198,13 +201,14 @@ CompareDialog::CompareDialog(const MazeGrid& maze, Point start, Point end,
     updateButtons();
 }
 
-// 运行三种算法：先跑一次拿到结果，再按单次耗时决定重复次数，测平均耗时
+// 运行各个算法：先跑一次拿到结果，再按单次耗时决定重复次数，测平均耗时
 void CompareDialog::runAll()
 {
     using Clock = std::chrono::steady_clock;
     for (Result& r : results_)
     {
-        if (r.algo == SolveAlgorithm::DFS_Recursive && !allowRecursive_) continue;
+        const bool recursive = (r.algo == SolveAlgorithm::DFS_Recursive || r.algo == SolveAlgorithm::BFS_Recursive);
+        if (recursive && !allowRecursive_) continue;
 
         const auto t0 = Clock::now();
         solveMaze(maze_, start_, end_, r.algo, r.path, r.visitedOrder, r.parentOf);
@@ -264,16 +268,21 @@ void CompareDialog::buildTable()
     table_->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
     table_->verticalHeader()->setDefaultSectionSize(table_->fontMetrics().lineSpacing() + 10);
     // 表格高度刚好放下表头 + 三行，不出现滚动条
-    int h = table_->horizontalHeader()->height() + 2 * table_->frameWidth();
+    int h = table_->horizontalHeader()->sizeHint().height() + 2 * table_->frameWidth() + 4;
     for (int row = 0; row < table_->rowCount(); ++row) h += table_->rowHeight(row);
     table_->setFixedHeight(h);
 }
 
 QString CompareDialog::buildSummary() const
 {
-    const Result& bfs = results_[0];
-    const Result& rec = results_[1];
-    const Result& iter = results_[2];
+    auto find = [this](SolveAlgorithm a) -> const Result& {
+        for (const Result& r : results_) if (r.algo == a) return r;
+        return results_.front();
+    };
+    const Result& bfs = find(SolveAlgorithm::BFS);
+    const Result& bfsRec = find(SolveAlgorithm::BFS_Recursive);
+    const Result& rec = find(SolveAlgorithm::DFS_Recursive);
+    const Result& iter = find(SolveAlgorithm::DFS_Iterative);
     if (!bfs.ran || !iter.ran || bfs.path.empty() || iter.path.empty())
         return "终点不可达，无法比较路径。";
 
@@ -294,11 +303,14 @@ QString CompareDialog::buildSummary() const
         parts << QString("BFS 路径 %1 格为最短，DFS 路径 %2 格（多 %3 格）")
                      .arg(bfs.path.size()).arg(iter.path.size()).arg(iter.path.size() - bfs.path.size());
 
-    if (rec.ran)
+    // 递归 / 非递归两种写法应当逐格一致，区别只在于用系统调用栈还是显式的队列 / 栈
+    if (bfsRec.ran && rec.ran)
     {
-        const bool identical = samePoints(rec.visitedOrder, iter.visitedOrder) && samePoints(rec.path, iter.path);
-        parts << (identical ? QString("两种 DFS 的访问顺序<b>逐格完全一致</b>，区别只在于用系统调用栈还是堆上的显式栈")
-                            : QString("<span style='color:#b22222;'>注意：两种 DFS 访问顺序不一致</span>"));
+        const bool sameBfs = samePoints(bfs.visitedOrder, bfsRec.visitedOrder) && samePoints(bfs.path, bfsRec.path);
+        const bool sameDfs = samePoints(rec.visitedOrder, iter.visitedOrder) && samePoints(rec.path, iter.path);
+        parts << ((sameBfs && sameDfs)
+            ? QString("BFS、DFS 各自的递归版与非递归版访问顺序<b>逐格完全一致</b>，区别只在于用系统调用栈还是显式的队列/栈")
+            : QString("<span style='color:#E84A5F;'>注意：递归版与非递归版访问顺序不一致</span>"));
     }
 
     return "<b>结论：</b>" + parts.join("；") + "。";
