@@ -46,7 +46,7 @@ CompareDialog::CompareDialog(const MazeGrid& maze, Point start, Point end,
     setWindowTitle("求解算法对比：BFS / DFS 的递归与非递归版（同一迷宫、同一起终点）");
 
     const std::pair<SolveAlgorithm, QString> algos[] = {
-        { SolveAlgorithm::BFS,           "BFS 非递归（队列）" },
+                { SolveAlgorithm::BFS,           "BFS 非递归（队列）" },
         { SolveAlgorithm::BFS_Recursive, "BFS 递归" },
         { SolveAlgorithm::DFS_Recursive, "DFS 递归" },
         { SolveAlgorithm::DFS_Iterative, "DFS 非递归（栈）" },
@@ -67,7 +67,7 @@ CompareDialog::CompareDialog(const MazeGrid& maze, Point start, Point end,
         .arg(mazeDescription).arg(start_.row).arg(start_.col).arg(end_.row).arg(end_.col), this);
     layout->addWidget(header);
 
-    // ---------- 四个小迷宫并排 ----------
+    // ---------- 三个小迷宫并排 ----------
     auto* viewsRow = new QHBoxLayout();
     std::vector<QLabel*> captions;
     for (const Result& r : results_)
@@ -186,7 +186,7 @@ CompareDialog::CompareDialog(const MazeGrid& maze, Point start, Point end,
     auto* note = new QLabel(
         "说明：① 耗时为重复运行多次后的单次平均值，只计算求解算法本身，不含动画；"
         "Debug 和 Release 编译下的数值会差很多，对比时请用同一种编译方式。<br>"
-        "② 完美迷宫中任意两点之间只有一条路径，所以几种算法找到的路径一定相同；"
+        "② 完美迷宫中任意两点之间只有一条路径，所以三种算法找到的路径一定相同；"
         "要体现 BFS \"保证最短路径\"的优势，需要在带环路的迷宫上对比。", this);
     note->setWordWrap(true);
     note->setStyleSheet("color: #A08770;");
@@ -201,7 +201,7 @@ CompareDialog::CompareDialog(const MazeGrid& maze, Point start, Point end,
     updateButtons();
 }
 
-// 运行各个算法：先跑一次拿到结果，再按单次耗时决定重复次数，测平均耗时
+// 运行三种算法：先跑一次拿到结果，再按单次耗时决定重复次数，测平均耗时
 void CompareDialog::runAll()
 {
     using Clock = std::chrono::steady_clock;
@@ -268,17 +268,18 @@ void CompareDialog::buildTable()
     table_->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
     table_->verticalHeader()->setDefaultSectionSize(table_->fontMetrics().lineSpacing() + 10);
     // 表格高度刚好放下表头 + 三行，不出现滚动条
-    int h = table_->horizontalHeader()->sizeHint().height() + 2 * table_->frameWidth() + 4;
+    int h = table_->horizontalHeader()->height() + 2 * table_->frameWidth();
     for (int row = 0; row < table_->rowCount(); ++row) h += table_->rowHeight(row);
     table_->setFixedHeight(h);
 }
 
 QString CompareDialog::buildSummary() const
 {
+    // 按算法类型查找，而不是按位置 results_[i] —— 以后调整列表顺序也不会错位
     auto find = [this](SolveAlgorithm a) -> const Result& {
         for (const Result& r : results_) if (r.algo == a) return r;
         return results_.front();
-    };
+        };
     const Result& bfs = find(SolveAlgorithm::BFS);
     const Result& bfsRec = find(SolveAlgorithm::BFS_Recursive);
     const Result& rec = find(SolveAlgorithm::DFS_Recursive);
@@ -310,7 +311,7 @@ QString CompareDialog::buildSummary() const
         const bool sameDfs = samePoints(rec.visitedOrder, iter.visitedOrder) && samePoints(rec.path, iter.path);
         parts << ((sameBfs && sameDfs)
             ? QString("BFS、DFS 各自的递归版与非递归版访问顺序<b>逐格完全一致</b>，区别只在于用系统调用栈还是显式的队列/栈")
-            : QString("<span style='color:#E84A5F;'>注意：递归版与非递归版访问顺序不一致</span>"));
+            : QString("<span style='color:#b22222;'>注意：递归版与非递归版访问顺序不一致</span>"));
     }
 
     return "<b>结论：</b>" + parts.join("；") + "。";

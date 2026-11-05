@@ -15,8 +15,8 @@ namespace
     {
         t = std::clamp(t, 0.0, 1.0);
         return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t,
-                                a.greenF() + (b.greenF() - a.greenF()) * t,
-                                a.blueF() + (b.blueF() - a.blueF()) * t);
+            a.greenF() + (b.greenF() - a.greenF()) * t,
+            a.blueF() + (b.blueF() - a.blueF()) * t);
     }
 
     QColor withAlpha(QColor c, int alpha)
@@ -55,7 +55,7 @@ MazeWidget::MazeWidget(QWidget* parent) : QWidget(parent)
     connect(pathAnim_, &QVariantAnimation::valueChanged, this, [this](const QVariant& v) {
         pathProgress_ = v.toDouble();
         update();
-    });
+        });
 
     // 终点脉冲：描线结束后，终点外圈扩散 3 次
     pulseAnim_ = new QVariantAnimation(this);
@@ -67,7 +67,7 @@ MazeWidget::MazeWidget(QWidget* parent) : QWidget(parent)
     connect(pulseAnim_, &QVariantAnimation::valueChanged, this, [this](const QVariant& v) {
         pulse_ = v.toDouble();
         update();
-    });
+        });
     connect(pulseAnim_, &QVariantAnimation::finished, this, [this]() { pulse_ = -1.0; update(); });
     connect(pathAnim_, &QVariantAnimation::finished, pulseAnim_, [this]() { pulseAnim_->start(); });
 }
@@ -336,7 +336,7 @@ void MazeWidget::stopFinishEffects()
 QPoint MazeWidget::cellCenter(Point p) const
 {
     return QPoint(offsetX_ + p.col * cellSize_ + cellSize_ / 2,
-                  offsetY_ + p.row * cellSize_ + cellSize_ / 2);
+        offsetY_ + p.row * cellSize_ + cellSize_ / 2);
 }
 
 bool MazeWidget::cellAt(const QPoint& pos, Point& out) const
@@ -447,10 +447,10 @@ void MazeWidget::paintGeneration(QPainter& painter)
 
     auto fillCell = [&](const Point& p, const QColor& c) {
         const QRectF r(offsetX_ + p.col * cellSize_ + inset, offsetY_ + p.row * cellSize_ + inset,
-                       cellSize_ - 2 * inset, cellSize_ - 2 * inset);
+            cellSize_ - 2 * inset, cellSize_ - 2 * inset);
         if (radius > 0) { painter.setPen(Qt::NoPen); painter.setBrush(c); painter.drawRoundedRect(r, radius, radius); }
         else painter.fillRect(r, c);
-    };
+        };
 
     for (int row = 0; row < static_cast<int>(carved_.size()); ++row)
         for (int col = 0; col < static_cast<int>(carved_[row].size()); ++col)
@@ -466,7 +466,7 @@ void MazeWidget::paintGeneration(QPainter& painter)
         {
             const int age = animationStep_ - 1 - i;  // 0 = 最新
             const QColor c = (age == 0) ? Theme::kJustBroken
-                                        : blend(trailHead, Theme::kCarved, static_cast<double>(age) / kTrailLength);
+                : blend(trailHead, Theme::kCarved, static_cast<double>(age) / kTrailLength);
             fillCell(genSteps_[i].from, c);
             fillCell(neighborOf(genSteps_[i].from, genSteps_[i].direction), c);
         }
@@ -506,7 +506,7 @@ void MazeWidget::drawPath(QPainter& painter, int pathWidth)
         painter.setPen(pen);
         painter.setBrush(Qt::NoBrush);
         painter.drawPolyline(line);
-    };
+        };
     stroke(withAlpha(Theme::kEnd, 45), pathWidth * 3.4);   // 外层光晕
     stroke(withAlpha(Theme::kEnd, 110), pathWidth * 2.0);  // 中层
     stroke(Theme::kEnd, pathWidth);                         // 主体
@@ -540,7 +540,7 @@ void MazeWidget::paintSolving(QPainter& painter)
     {
         const Point& p = visitedOrder_[i];
         const QRectF r(offsetX_ + p.col * cellSize_ + inset, offsetY_ + p.row * cellSize_ + inset,
-                       cellSize_ - 2 * inset, cellSize_ - 2 * inset);
+            cellSize_ - 2 * inset, cellSize_ - 2 * inset);
         const QColor c = Theme::heatColor(static_cast<double>(depth_[i]) / maxDepth_);
         if (radius > 0) { painter.setBrush(c); painter.drawRoundedRect(r, radius, radius); }
         else painter.fillRect(r, c);
@@ -551,7 +551,7 @@ void MazeWidget::paintSolving(QPainter& painter)
         const QRectF r(offsetX_ + p.col * cellSize_, offsetY_ + p.row * cellSize_, cellSize_, cellSize_);
         painter.setBrush(withAlpha(Theme::kCurrent, 70));
         painter.drawRoundedRect(r.adjusted(-cellSize_ * 0.25, -cellSize_ * 0.25, cellSize_ * 0.25, cellSize_ * 0.25),
-                                cellSize_ * 0.4, cellSize_ * 0.4);
+            cellSize_ * 0.4, cellSize_ * 0.4);
         painter.setBrush(Theme::kCurrent);
         painter.drawRoundedRect(r.adjusted(inset, inset, -inset, -inset), radius, radius);
     }

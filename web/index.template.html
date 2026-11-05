@@ -1,0 +1,2016 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小探险家迷宫</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap">
+<style>
+/* 布局：顶部标题 + 页签；每个页签是"左侧控制面板 + 右侧画布"，窄屏时上下堆叠。
+   配色沿用 Qt 版的卡通主题（theme.h）：奶油底、焦糖棕文字、橙色主按钮、天蓝次按钮。
+   这是一个"白天森林"的游戏世界，刻意只做浅色一套。 */
+:root {
+  color-scheme: light;
+  --bg: #FFF6E5;          /* 奶油底 */
+  --panel: #FFFFFF;
+  --panel-soft: #FFFBF3;
+  --line: #F0D9B5;        /* 面板描边 */
+  --ink: #5A3E2B;         /* 焦糖棕文字 */
+  --muted: #A08770;
+  --accent: #FF9F43;      /* 橙色主按钮 */
+  --accent-deep: #E8811F;
+  --sky: #5DADE2;         /* 天蓝次按钮 */
+  --sky-deep: #3D8FC6;
+  --gold: #FFC93C;
+  --good: #3FA34D;
+  --bad: #E84A5F;
+  --wall: #8B5E3C;
+  --board: #FFF1D6;
+  --font-display: "ZCOOL KuaiLe", "YouYuan", "幼圆", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --radius: 18px;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); color: var(--ink); }
+body {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px 40px;
+}
+.wrap { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+/* ---------- 顶部 ---------- */
+header.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand canvas { width: 46px; height: 46px; flex: none; }
+.brand h1 { font-family: var(--font-display); font-weight: 400; font-size: 30px; line-height: 1.1; margin: 0; letter-spacing: 1px; }
+.brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+nav.tabs { display: flex; flex-wrap: wrap; gap: 6px; background: #FBE7C6; padding: 5px; border-radius: 999px; }
+nav.tabs a {
+  font-family: var(--font-display); font-size: 17px; color: var(--ink); text-decoration: none;
+  padding: 6px 16px; border-radius: 999px; transition: background .15s, transform .15s;
+}
+nav.tabs a:hover { background: #FFF3DC; }
+nav.tabs a[aria-current="page"] { background: var(--accent); color: #fff; box-shadow: 0 3px 0 var(--accent-deep); }
+nav.tabs a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+
+/* ---------- 通用组件 ---------- */
+.view { display: none; }
+.view.active { display: block; animation: pop .25s ease-out; }
+@keyframes pop { from { transform: translateY(6px); opacity: .6; } to { transform: none; opacity: 1; } }
+.layout { display: grid; grid-template-columns: 290px minmax(0, 1fr) 290px; gap: 16px; align-items: start; }
+.layout > .lab-side .card { margin: 0; }
+.card { background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); padding: 14px 16px 16px; position: relative; }
+.card + .card { margin-top: 14px; }
+.card h2 {
+  font-family: var(--font-display); font-weight: 400; font-size: 15px; color: #fff;
+  background: var(--accent); display: inline-block; padding: 1px 12px; border-radius: 999px;
+  margin: -26px 0 8px; position: relative; top: 0; letter-spacing: 1px;
+}
+.card.flat h2 { margin-top: 0; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.row > label.key { width: 68px; flex: none; color: var(--ink); }
+.row > .grow { flex: 1 1 120px; min-width: 0; }
+.row > input[type="range"].grow { flex: 1 1 50px; }
+.muted { color: var(--muted); }
+.small { font-size: 12.5px; }
+.num { font-variant-numeric: tabular-nums; }
+
+button {
+  font: inherit; font-weight: 600; color: var(--ink);
+  background: #FFF0D2; border: 0; border-bottom: 4px solid #E9CC9B;
+  padding: 7px 14px; border-radius: 14px; cursor: pointer; transition: transform .08s, filter .15s;
+  touch-action: manipulation;
+}
+button:hover:not(:disabled) { filter: brightness(1.04); }
+button:active:not(:disabled) { transform: translateY(2px); border-bottom-width: 2px; margin-bottom: 2px; }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); color: #fff; border-bottom-color: var(--accent-deep); }
+button.sky { background: var(--sky); color: #fff; border-bottom-color: var(--sky-deep); }
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.btns.three { grid-template-columns: repeat(3, 1fr); }
+
+select, input[type="number"] {
+  font: inherit; color: var(--ink); background: var(--panel-soft);
+  border: 2px solid var(--line); border-radius: 12px; padding: 5px 8px; min-width: 0;
+}
+input[type="number"] { width: 76px; }
+input[type="range"] { accent-color: var(--accent); min-width: 0; }
+label.check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+.seg { display: inline-flex; background: #FBE7C6; border-radius: 999px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: transparent; padding: 3px 12px; border-radius: 999px; font-weight: 600; }
+.seg button:active { transform: none; margin: 0; }
+.seg button[aria-pressed="true"] { background: #fff; box-shadow: 0 1px 0 #E9CC9B; }
+
+table.stats { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+table.stats td { padding: 2px 0; vertical-align: top; }
+table.stats td:first-child { color: var(--muted); white-space: nowrap; padding-right: 10px; width: 1%; }
+.notice { background: #FFF4D6; border: 2px dashed #F2C66D; color: #9A6A12; border-radius: 12px; padding: 6px 10px; font-size: 13px; }
+
+.data-wrap { overflow-x: auto; border: 2px solid var(--line); border-radius: 14px; }
+table.data { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; background: var(--panel); }
+table.data th, table.data td { padding: 7px 10px; text-align: center; white-space: nowrap; border-bottom: 1px solid #F6E6CC; }
+table.data th { background: #FFF0D2; font-weight: 600; }
+table.data td:first-child, table.data th:first-child { text-align: left; }
+table.data tr:last-child td { border-bottom: 0; }
+.yes { color: var(--good); font-weight: 700; }
+.no { color: var(--bad); font-weight: 700; }
+.summary { line-height: 1.75; }
+.summary b { color: #C0601A; }
+
+/* ---------- 画布区 ---------- */
+.stage { min-width: 0; display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.canvas-box { background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); padding: 12px; display: flex; justify-content: center; min-width: 0; }
+canvas.maze { display: block; max-width: 100%; touch-action: manipulation; }
+#game-canvas:focus { outline: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12.5px; justify-content: center; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 14px; height: 14px; border-radius: 50%; }
+.legend i.bar { width: 34px; height: 10px; border-radius: 6px; background: linear-gradient(90deg, #A8E6CF, #9AD3F0, #C3B1E1, #F7A8C4); }
+.legend i.line { width: 20px; height: 3px; border-radius: 2px; }
+
+/* ---------- 闯关冒险 ---------- */
+.game-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
+.levels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.levels button { text-align: left; padding: 8px 10px; display: flex; flex-direction: column; gap: 1px; line-height: 1.3; }
+.levels button .lv { font-family: var(--font-display); font-weight: 400; font-size: 16px; }
+.levels button .meta { font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.levels button .stars { font-size: 13px; letter-spacing: 1px; }
+.levels button .stars .on { color: var(--gold); -webkit-text-stroke: .4px #D89A12; }
+.levels button .stars .off { color: #E3CFAE; }
+.levels button[aria-pressed="true"] { background: #FFE58A; border-bottom-color: #E9BE3A; }
+.hud { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.hud div { background: var(--panel-soft); border: 2px solid var(--line); border-radius: 14px; padding: 6px 4px; }
+.hud b { display: block; font-family: var(--font-display); font-weight: 400; font-size: 24px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.hud span { font-size: 12px; color: var(--muted); }
+.game-stage { position: relative; display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 0; }
+.game-box { position: relative; background: #A7D98A; border-radius: 22px; padding: 12px; box-shadow: inset 0 -6px 0 rgba(60,110,40,.25); max-width: 100%; }
+.game-box canvas { border-radius: 12px; }
+.dpad { display: grid; grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(2, 46px); gap: 6px; }
+.dpad button { padding: 0; font-size: 20px; line-height: 1; }
+.dpad .up { grid-column: 2; grid-row: 1; }
+.dpad .left { grid-column: 1; grid-row: 2; }
+.dpad .down { grid-column: 2; grid-row: 2; }
+.dpad .right { grid-column: 3; grid-row: 2; }
+.tip { text-align: center; color: var(--muted); font-size: 13px; }
+kbd { font: 12px/1 var(--font-body); background: #fff; border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 6px; padding: 2px 5px; }
+.result {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(90, 62, 43, .28); border-radius: 22px; padding: 12px;
+}
+.result-card {
+  background: #fff; border: 3px solid var(--gold); border-radius: 22px; padding: 18px 20px; width: min(340px, 100%);
+  text-align: center; box-shadow: 0 10px 0 rgba(90,62,43,.18); animation: bounce .45s cubic-bezier(.2,1.6,.4,1);
+}
+@keyframes bounce { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+.result-card h3 { font-family: var(--font-display); font-weight: 400; font-size: 26px; margin: 0; }
+.big-stars { font-size: 40px; letter-spacing: 6px; margin: 4px 0; line-height: 1.2; }
+.big-stars .on { color: var(--gold); -webkit-text-stroke: 1px #D89A12; display: inline-block; animation: star .5s backwards; }
+.big-stars .off { color: #EADBC4; }
+.big-stars .on:nth-child(2) { animation-delay: .15s; } .big-stars .on:nth-child(3) { animation-delay: .3s; }
+@keyframes star { from { transform: scale(0) rotate(-90deg); } to { transform: none; } }
+.result-card .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 12px; font-size: 13px; }
+.result-card .facts div { background: var(--panel-soft); border-radius: 10px; padding: 5px; }
+.result-card .facts b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.result-card .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+.intro {
+  position: absolute; left: 12px; right: 12px; top: 12px; display: flex; align-items: center; gap: 10px;
+  background: rgba(255, 251, 240, .94); border: 2px solid var(--line); border-radius: 14px; padding: 8px 10px 8px 14px;
+  font-size: 13px; line-height: 1.5; box-shadow: 0 4px 0 rgba(60,110,40,.18);
+}
+.intro > div { flex: 1; min-width: 0; }
+.intro b { font-family: var(--font-display); font-weight: 400; font-size: 16px; }
+.intro span { color: var(--muted); font-size: 12px; }
+.intro button { flex: none; padding: 5px 12px; }
+.play-controls { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.replay { margin: 0; }
+.rp-chips { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.rp-chips div { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.rp-chips div { border-radius: 14px; padding: 6px 10px; border: 2px solid; font-variant-numeric: tabular-nums; }
+.rp-chips b { font-family: var(--font-display); font-weight: 400; font-size: 24px; line-height: 1.1; }
+.rp-chips span { font-size: 12px; color: var(--muted); }
+.rp-chips .me { border-color: #9CC8EA; background: #EEF6FD; }
+.rp-chips .bfs { border-color: #A8E6CF; background: #EFFAF5; }
+.rp-chips .dfs { border-color: #F7A8C4; background: #FEF1F6; }
+.seg.wrap { display: grid; grid-template-columns: 1fr 1fr; border-radius: 16px; }
+.seg.wrap button { padding: 4px 6px; font-size: 13px; }
+.flow-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.flow-steps li::marker { color: var(--accent); font-weight: 700; }
+
+/* ---------- 对比页 ---------- */
+.compare-grid { display: grid; gap: 12px; }
+.compare-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.compare-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.compare-cell { background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.compare-cell h3 { font-family: var(--font-display); font-weight: 400; font-size: 17px; margin: 0; }
+.compare-cell .cap { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: center; }
+.compare-cell .skipped { padding: 40px 10px; color: var(--muted); text-align: center; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.toolbar .speed { display: flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 0; }
+.toolbar .speed input { flex: 1; }
+.two-col { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.page-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.page-head h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin: 0; }
+
+/* ---------- 关于 ---------- */
+.about { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.req td:nth-child(3) { white-space: normal; text-align: left; min-width: 220px; }
+.req td:nth-child(2) { white-space: normal; text-align: left; }
+.flow { display: flex; flex-direction: column; gap: 8px; }
+.flow div { background: var(--panel-soft); border: 2px solid var(--line); border-radius: 14px; padding: 8px 12px; }
+.flow div b { font-family: var(--font-display); font-weight: 400; font-size: 16px; }
+.flow .arrow { border: 0; background: none; padding: 0; text-align: center; color: var(--accent); font-size: 18px; line-height: 1; }
+code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12.5px; background: #FFF0D2; padding: 1px 5px; border-radius: 6px; }
+
+.loading { text-align: center; padding: 60px 0; font-family: var(--font-display); font-size: 22px; color: var(--muted); }
+.error { color: var(--bad); }
+
+@media (max-width: 1180px) {
+  .layout { grid-template-columns: 300px minmax(0, 1fr); }
+  .layout > .lab-side { grid-column: 1; }
+}
+@media (max-width: 980px) {
+  .layout, .game-layout, .two-col, .about { grid-template-columns: minmax(0, 1fr); }
+  .layout > .lab-side { grid-column: auto; }
+  .stage, .game-stage { order: -1; }
+  .compare-grid.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .brand h1 { font-size: 24px; }
+  nav.tabs a { font-size: 15px; padding: 5px 11px; }
+  .compare-grid.two, .compare-grid.four { grid-template-columns: minmax(0, 1fr); }
+  .levels button { padding: 6px 8px; }
+  .levels button .lv { font-size: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <canvas id="logo" width="92" height="92" aria-hidden="true"></canvas>
+      <div>
+        <h1>小探险家迷宫</h1>
+        <p>数据结构课程设计 · Project 1 迷宫生成与求解</p>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="页面">
+      <a href="#game" data-view="game">闯关冒险</a>
+      <a href="#lab" data-view="lab">算法实验室</a>
+      <a href="#gen" data-view="gen">生成算法对比</a>
+      <a href="#solve" data-view="solve">求解算法对比</a>
+      <a href="#about" data-view="about">关于项目</a>
+    </nav>
+  </header>
+
+  <div id="loading" class="loading">正在载入 C++ 算法模块…</div>
+
+  <!-- ================= 闯关冒险 ================= -->
+  <section class="view" id="view-game" aria-label="闯关冒险">
+    <div class="game-layout">
+      <aside>
+        <div class="card flat" id="card-levels">
+          <h2>选择关卡</h2>
+          <div class="levels" id="levels"></div>
+        </div>
+        <div class="card flat" id="card-level">
+          <h2>本关</h2>
+          <div class="stack">
+            <div class="hud">
+              <div><b id="hud-steps">0</b><span>步数</span></div>
+              <div><b id="hud-time">0.0</b><span>用时 / 秒</span></div>
+              <div><b id="hud-best">—</b><span>最短步数</span></div>
+            </div>
+            <div class="btns">
+              <button id="g-restart">重新开始</button>
+              <button id="g-route" aria-pressed="false">显示最短路线</button>
+            </div>
+            <button id="g-tolab">在实验室打开这张地图</button>
+            <ol class="flow-steps"><li>看森林“长出”迷宫（Kruskal / Prim 生成过程）</li><li>带小探险家走到宝箱</li><li>和 BFS 最短步数比一比，评星</li><li>算法复盘：BFS / DFS 在同一张地图上怎么找</li></ol><p class="muted small" style="margin:0">前两关是完美迷宫；后四关额外拆墙造了环路，岔路更多，也更能看出 BFS 和 DFS 的区别。</p>
+          </div>
+        </div>
+        <div class="card flat replay" id="replay" hidden>
+          <h2>算法复盘</h2>
+          <div class="stack">
+            <div class="rp-chips" id="rp-chips"></div>
+            <div class="seg wrap" id="rp-algos" role="group" aria-label="选择要回放的求解算法"></div>
+            <div class="row">
+              <button class="sky" id="rp-play">暂停</button>
+              <button id="rp-skip">跳到结尾</button>
+              <label class="check"><input type="checkbox" id="rp-mine" checked> 显示我的路线（蓝色虚线）</label>
+            </div>
+            <p class="summary" id="rp-text" style="margin:0"></p>
+            <div class="row">
+              <button id="rp-back">再玩一次</button>
+              <button class="primary" id="rp-next">下一关</button>
+              <button id="rp-lab">在实验室里继续研究</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <div class="game-stage">
+        <div class="game-box" id="game-box">
+          <canvas id="game-canvas" class="maze" tabindex="0" aria-label="迷宫游戏画面，用方向键移动"></canvas>
+          <div class="intro" id="intro" hidden><div id="intro-text"></div><button id="intro-skip">跳过</button></div>
+          <div class="result" id="result" hidden>
+            <div class="result-card" role="dialog" aria-label="通关结算">
+              <h3 id="r-title">找到宝箱啦！</h3>
+              <div class="big-stars" id="r-stars"></div>
+              <div class="muted small" id="r-comment"></div>
+              <div class="facts">
+                <div><b id="r-steps">0</b>你的步数</div>
+                <div><b id="r-short">0</b>BFS 最短步数</div>
+                <div><b id="r-eff">0%</b>探索效率</div>
+                <div><b id="r-time">0.0s</b>用时</div>
+              </div>
+              <div class="actions">
+                <button class="primary" id="r-replay">算法复盘</button>
+                <button id="r-again">再玩一次</button>
+                <button id="r-next">下一关</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="play-controls" id="play-controls">
+        <div class="dpad" aria-label="方向按钮">
+          <button class="up" data-dir="0" aria-label="上">▲</button>
+          <button class="left" data-dir="3" aria-label="左">◀</button>
+          <button class="down" data-dir="2" aria-label="下">▼</button>
+          <button class="right" data-dir="1" aria-label="右">▶</button>
+        </div>
+        <div class="tip"><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动，<kbd>R</kbd> 重新开始；手机上可以滑动画面或点方向键。撞墙不计步。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-lab" aria-label="算法实验室">
+    <div class="layout">
+      <aside>
+        <div class="card flat">
+          <h2>迷宫设置</h2>
+          <div class="stack">
+            <div class="row"><label class="key" for="lab-w">宽度</label><input type="number" id="lab-w" min="2" max="120" value="15"> <span class="muted">列</span></div>
+            <div class="row"><label class="key" for="lab-h">高度</label><input type="number" id="lab-h" min="2" max="120" value="15"> <span class="muted">行</span></div>
+            <div class="row"><label class="key" for="lab-gen">生成算法</label>
+              <select id="lab-gen" class="grow"><option value="0">Kruskal（并查集）</option><option value="1">Prim（堆优化）</option></select></div>
+            <div class="row" title="0% = 完美迷宫（课程基本要求）：任意两点之间只有一条路。&#10;大于 0% 时在生成树之外再随机拆掉一部分墙，出现环路，路径不再唯一：BFS 仍保证最短，DFS 不一定。">
+              <label class="key" for="lab-loop">环路比例</label>
+              <input type="range" id="lab-loop" min="0" max="30" value="0" class="grow">
+              <span id="lab-loop-text" class="num" style="min-width:88px"></span></div>
+            <label class="check"><input type="checkbox" id="lab-anim" checked> 播放生成过程</label>
+            <div class="btns">
+              <button class="primary" id="lab-generate">生成新迷宫</button>
+              <button id="lab-to-gen">生成算法对比</button>
+            </div>
+          </div>
+        </div>
+        <div class="card flat">
+          <h2>求解算法</h2>
+          <div class="stack">
+            <select id="lab-solve" aria-label="求解算法">
+              <option value="0">BFS 非递归（显式队列）</option>
+              <option value="3">BFS 递归（逐层递归）</option>
+              <option value="1">DFS 递归</option>
+              <option value="2">DFS 非递归（显式栈）</option>
+            </select>
+            <div class="row"><span class="muted">点击迷宫设置</span>
+              <div class="seg" role="group" aria-label="点击迷宫设置起点或终点">
+                <button id="lab-click-start" aria-pressed="true">起点</button>
+                <button id="lab-click-end" aria-pressed="false">终点</button>
+              </div></div>
+            <button id="lab-to-solve">求解算法对比</button>
+            <div class="notice" id="lab-notice" hidden></div>
+          </div>
+        </div>
+        <div class="card flat">
+          <h2>动画控制</h2>
+          <div class="stack">
+            <div class="row"><label class="key" for="lab-speed">速度</label><input type="range" id="lab-speed" min="0" max="100" value="35" class="grow"><span id="lab-speed-text" class="num" style="min-width:64px"></span></div>
+            <div class="btns">
+              <button class="sky" id="lab-play">播放</button>
+              <button id="lab-step">单步</button>
+              <button id="lab-skip">跳到结尾</button>
+              <button id="lab-reset">重置</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <div class="stage">
+        <div class="canvas-box"><canvas id="lab-canvas" class="maze" aria-label="迷宫画布：左键设起点，右键设终点"></canvas></div>
+        <div class="legend" id="lab-legend"></div>
+      </div>
+      <aside class="lab-side">
+        <div class="card flat">
+          <h2>统计信息</h2>
+          <table class="stats" id="lab-stats"></table>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+
+  <!-- ================= 生成算法对比 ================= -->
+  <section class="view" id="view-gen" aria-label="生成算法对比">
+    <div class="stack" style="gap:14px">
+      <div class="page-head">
+        <h2>Kruskal 和 Prim，谁在怎么拆墙？</h2>
+        <div class="row">
+          <label for="gen-w">宽</label><input type="number" id="gen-w" min="2" max="80" value="15">
+          <label for="gen-h">高</label><input type="number" id="gen-h" min="2" max="80" value="15">
+          <button id="gen-apply">换个尺寸</button>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="stack">
+          <div class="compare-grid two">
+            <div class="compare-cell"><h3>Kruskal（并查集）</h3><canvas class="maze" id="gen-c0"></canvas><div class="cap" id="gen-cap0"></div></div>
+            <div class="compare-cell"><h3>Prim（堆优化）</h3><canvas class="maze" id="gen-c1"></canvas><div class="cap" id="gen-cap1"></div></div>
+          </div>
+          <div class="card flat">
+            <div class="toolbar">
+              <div class="speed"><label for="gen-speed">速度</label><input type="range" id="gen-speed" min="0" max="100" value="57"><span id="gen-speed-text" class="num" style="min-width:64px"></span></div>
+              <button class="sky" id="gen-play">同步播放</button>
+              <button id="gen-skip">全部跳到结尾</button>
+              <button id="gen-reset">重置</button>
+              <button id="gen-new">换一组样本</button>
+            </div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="data-wrap"><table class="data" id="gen-table"></table></div>
+          <div class="summary" id="gen-summary"></div>
+          <p class="muted small" id="gen-note" style="margin:0"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ================= 求解算法对比 ================= -->
+  <section class="view" id="view-solve" aria-label="求解算法对比">
+    <div class="stack" style="gap:14px">
+      <div class="page-head">
+        <h2>四种求解算法，同一张迷宫</h2>
+        <div class="row">
+          <button id="solve-from-lab">用实验室当前迷宫</button>
+          <button class="primary" id="solve-loop-demo">换一张带环路的迷宫</button>
+        </div>
+      </div>
+      <div class="muted num" id="solve-desc"></div>
+      <div class="compare-grid four" id="solve-grid"></div>
+      <div class="card flat">
+        <div class="toolbar">
+          <div class="speed"><label for="solve-speed">速度</label><input type="range" id="solve-speed" min="0" max="100" value="45"><span id="solve-speed-text" class="num" style="min-width:64px"></span></div>
+          <button class="sky" id="solve-play">同步播放</button>
+          <button id="solve-skip">全部跳到结尾</button>
+          <button id="solve-reset">重置</button>
+        </div>
+      </div>
+      <div class="data-wrap"><table class="data" id="solve-table"></table></div>
+      <div class="summary" id="solve-summary"></div>
+      <p class="muted small" style="margin:0">说明：① 耗时为在浏览器里重复运行多次后的单次平均值，只计算求解算法本身（WebAssembly），不含动画，会比本地 Release 编译稍慢。
+        ② 完美迷宫中任意两点之间只有一条路径，几种算法找到的路径一定相同；要体现 BFS“保证最短路径”的优势，请点“换一张带环路的迷宫”，或在实验室把“环路比例”调到 0% 以上再生成。</p>
+    </div>
+  </section>
+
+
+  <!-- ================= 关于 ================= -->
+  <section class="view" id="view-about" aria-label="关于项目">
+    <div class="about">
+      <div class="stack" style="gap:14px">
+        <div class="page-head"><h2>课程要求对照</h2></div>
+        <div class="data-wrap">
+          <table class="data req">
+            <tr><th>类别</th><th>要求</th><th>在网页里哪里看</th></tr>
+            <tr><td>基本</td><td>并查集 + Kruskal / Prim 生成完美迷宫（Prim 用堆）</td><td>算法实验室 → 生成算法；环路比例保持 0% 即完美迷宫，统计里拆墙次数恰好 N−1</td></tr>
+            <tr><td>基本</td><td>BFS 求最短路径、DFS 搜索</td><td>算法实验室 → 求解算法</td></tr>
+            <tr><td>基本</td><td>搜索算法都要有递归和非递归（显式栈 / 队列）两种写法</td><td>求解算法下拉框里四种都有；求解算法对比会自动验证递归版与非递归版逐格一致</td></tr>
+            <tr><td>基本</td><td>逐步显示搜索路径</td><td>算法实验室 → 播放 / 单步 / 跳到结尾，热力图显示离起点的距离</td></tr>
+            <tr><td>额外</td><td>更好的交互式界面</td><td>闯关冒险：玩家自己走迷宫，再和 BFS 最短路线对比评星</td></tr>
+            <tr><td>额外</td><td>可视化比较不同生成算法</td><td>生成算法对比：并排同步播放 + 多样本统计</td></tr>
+            <tr><td>额外</td><td>性能（时间 / 空间复杂度）分析</td><td>两个对比页给出实测耗时；完整测试与报告见仓库 <code>test/</code> 与 <code>docs/</code></td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="stack" style="gap:14px">
+        <div class="page-head"><h2>网页是怎么跑起来的</h2></div>
+        <div class="flow">
+          <div><b>C++ 算法源码</b><br><span class="small"><code>src/maze_generator.cpp</code>（李婷婷：并查集、Kruskal、Prim）<br><code>src/maze_solver.cpp</code>（方雨婷：BFS、DFS 各两种写法）</span></div>
+          <div class="arrow">▼</div>
+          <div><b>编译成 WebAssembly</b><br><span class="small">用 clang（wasi-sdk）把上面两份源码原样编译，<code>web/wasm_api.cpp</code> 只负责把结果交给网页，不改算法</span></div>
+          <div class="arrow">▼</div>
+          <div><b>浏览器里运行</b><br><span class="small">网页（JavaScript + Canvas）只负责画图和交互；每次生成、求解都是在调用这段 C++ 代码</span></div>
+        </div>
+        <div class="card flat">
+          <h2>分工</h2>
+          <table class="stats">
+            <tr><td>李婷婷</td><td>迷宫生成：并查集、Kruskal、Prim（堆）、种子与环路</td></tr>
+            <tr><td>方雨婷</td><td>迷宫求解：BFS / DFS 递归与非递归；Qt 界面与网页界面</td></tr>
+            <tr><td>白荷初</td><td>正确性测试、性能测试、对比分析与报告</td></tr>
+          </table>
+        </div>
+        <p class="muted small" style="margin:0">同一份 C++ 代码也有 Qt 桌面版（仓库根目录 CMake 工程）。两边功能一致，迷宫的随机结果因标准库实现不同可能不一样。</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- 编译好的 maze.wasm 以 base64 文本的形式嵌在这里（由 embed.ps1 / embed.py 填入），这样不用服务器也能打开 -->
+<script type="application/octet-stream" id="wasm-b64">__MAZE_WASM_BASE64__</script>
+<script>
+"use strict";
+// =====================================================================
+// Engine：载入由 C++ 编译成的 WebAssembly 模块，所有生成与求解都走这里。
+// 第10~12 步的正式网页会继续用这一段，不用再改。
+// =====================================================================
+const Engine = (() => {
+  let X = null;                            // wasm 模块导出的函数和内存
+  let loaded = null;                       // 当前已载入 C++ 端、可以直接求解的迷宫对象
+  // 从 wasm 内存里按指针读出 n 个 int，复制成 JS 数组（slice 复制一份，避免内存扩容后失效）
+  const i32 = (ptr, n) => new Int32Array(X.memory.buffer, ptr, n).slice();
+
+  async function init() {
+    const b64 = document.getElementById("wasm-b64").textContent.trim();
+    const bin = atob(b64);                 // base64 -> 二进制字符串
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    // wasi-sdk 的标准库会引用 3 个系统调用（关闭/定位/写文件），我们用不到，给空实现即可
+    const stub = () => 0;
+    const { instance } = await WebAssembly.instantiate(bytes, {
+      wasi_snapshot_preview1: { fd_close: stub, fd_seek: stub, fd_write: stub },
+    });
+    X = instance.exports;
+    X._initialize();                       // 初始化 C++ 的全局变量
+  }
+
+  // 调用 A 的 generateMazeWithSteps；返回 { w, h, walls, steps }
+  //   walls：每格一个数，按位表示四面墙：1上 2右 4下 8左（有墙为 1）
+  //   steps：拆墙顺序，每步 3 个数：row, col, direction（0上 1右 2下 3左）
+  function generate(w, h, algo, seed, loopRate) {
+    const n = X.mz_generate(w, h, algo, seed >>> 0, loopRate);
+    const maze = { w, h, walls: new Uint8Array(i32(X.mz_walls(), w * h)), steps: i32(X.mz_steps(), n * 3), algo, loopRate };
+    loaded = null;                         // mz_generate 覆盖了 C++ 端的迷宫
+    return maze;
+  }
+
+  // 把 JS 端的迷宫写进 C++ 端（同一个迷宫只写一次）
+  function load(maze) {
+    if (loaded === maze) return;
+    const ptr = X.mz_input(maze.w, maze.h);
+    new Int32Array(X.memory.buffer, ptr, maze.w * maze.h).set(maze.walls);
+    X.mz_use_input();
+    loaded = maze;
+  }
+
+  // 调用 B 的 solveMaze；algo 与 C++ 枚举一致：0=BFS 1=DFS递归 2=DFS非递归 3=BFS递归
+  //   返回的三个数组每个点占 2 个数（row, col）
+  function solve(maze, algo, s, e) {
+    load(maze);
+    const v = X.mz_solve(algo, s.r, s.c, e.r, e.c);
+    const pl = X.mz_path_len();
+    return { visited: i32(X.mz_visited(), v * 2), parents: i32(X.mz_parents(), v * 2), path: i32(X.mz_path(), pl * 2) };
+  }
+
+  // 浏览器计时精度有限（常见 0.1ms），所以重复运行直到总时长够长，再取平均
+  function repeat(fn, minMs = 12, maxReps = 5000) {
+    let reps = 0;
+    const t0 = performance.now();
+    let t = 0;
+    do { fn(); reps++; t = performance.now() - t0; } while (t < minMs && reps < maxReps);
+    return { micros: (t * 1000) / reps, reps };
+  }
+  function timeSolve(maze, algo, s, e) { load(maze); return repeat(() => X.mz_solve(algo, s.r, s.c, e.r, e.c)); }
+  function timeGenerate(w, h, algo, seed, loopRate) {
+    const r = repeat(() => X.mz_generate(w, h, algo, seed >>> 0, loopRate), 8, 400);
+    loaded = null;
+    return r;
+  }
+  // 一批种子整体计时（生成对比页用）
+  function timeBatch(w, h, algo, seeds) {
+    let rounds = 0;
+    const t0 = performance.now();
+    let t = 0;
+    do { for (const s of seeds) X.mz_generate(w, h, algo, s >>> 0, 0); rounds++; t = performance.now() - t0; } while (t < 15 && rounds < 50);
+    loaded = null;
+    return (t * 1000) / (rounds * seeds.length);
+  }
+  return { init, generate, solve, timeSolve, timeGenerate, timeBatch };
+})();
+window.Engine = Engine;   // 方便在控制台里直接试
+
+const ALGO_NAME = { 0: "BFS 非递归", 3: "BFS 递归", 1: "DFS 递归", 2: "DFS 非递归" };
+const ALGO_FULL = { 0: "BFS 非递归（队列）", 3: "BFS 递归", 1: "DFS 递归", 2: "DFS 非递归（栈）" };
+const GEN_NAME = ["Kruskal", "Prim"];
+const MAX_RECURSIVE_CELLS = 2500;   // 与 Qt 版一致：50×50 以上禁用递归版，防止栈溢出
+const randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0];
+const sliderToSps = (v) => Math.round(Math.pow(10, (v * 3) / 100));   // 0~100 → 每秒 1~1000 步（对数）
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const $ = (id) => document.getElementById(id);
+const fmtMicros = (us) => (us >= 1000 ? (us / 1000).toFixed(2) + " ms" : us.toFixed(us < 10 ? 2 : 1) + " µs");
+const DIRS = [[-1, 0, 1, 4], [0, 1, 2, 8], [1, 0, 4, 1], [0, -1, 8, 2]];   // dr, dc, 本格墙位, 对面格墙位
+
+// 热力图：薄荷 → 天蓝 → 薰衣草 → 樱花粉（与 Qt 版 theme.h 相同）
+const HEAT = [[168, 230, 207], [154, 211, 240], [195, 177, 225], [247, 168, 196]];
+function heat(t) {
+  t = clamp(t, 0, 1);
+  const pos = t * (HEAT.length - 1), i = Math.min(HEAT.length - 2, Math.floor(pos)), f = pos - i;
+  const a = HEAT[i], b = HEAT[i + 1];
+  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`;
+}
+function lerpColor(c1, c2, f) {
+  return `rgb(${Math.round(c1[0] + (c2[0] - c1[0]) * f)},${Math.round(c1[1] + (c2[1] - c1[1]) * f)},${Math.round(c1[2] + (c2[2] - c1[2]) * f)})`;
+}
+function roundRect(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+
+// =====================================================================
+// MazeView：画迷宫 + 播放"生成过程"和"求解过程"（对应 Qt 版的 MazeWidget）
+// =====================================================================
+class MazeView {
+  constructor(canvas, { maxCanvas = 600, maxCell = 44, interactive = false } = {}) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.maxCanvas = maxCanvas;
+    this.maxCell = maxCell;
+    this.maze = null;
+    this.phase = "solve";
+    this.step = 0;
+    this.playing = false;
+    this.sps = 10;
+    this.acc = 0;
+    this.sol = null;
+    this.start = null; this.end = null;
+    this.pathProgress = 0; this.pulse = -1; this.effectStart = 0; this.pathDur = 1;
+    this.listeners = {};
+    this.cell = 20; this.margin = 6;
+    this.raf = null; this.lastT = 0;
+    if (interactive) {
+      canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+      canvas.addEventListener("pointerdown", (e) => {
+        const p = this.cellAt(e);
+        if (p) this.emit("cell", p, e.button === 2 ? "right" : "left");
+      });
+      canvas.style.cursor = "pointer";
+    }
+    const ro = new ResizeObserver(() => this.fit());
+    ro.observe(canvas.parentElement);
+  }
+  on(name, fn) { (this.listeners[name] ||= []).push(fn); }
+  emit(name, ...args) { for (const fn of this.listeners[name] || []) fn(...args); }
+
+  fit() {
+    if (!this.maze) return;
+    const parent = this.canvas.parentElement;
+    const cs = getComputedStyle(parent);
+    const avail = parent.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    if (avail <= 0) return;
+    const size = Math.min(avail, this.maxCanvas);
+    const n = Math.max(this.maze.w, this.maze.h);
+    this.margin = 6;
+    this.cell = clamp(Math.floor((size - 2 * this.margin) / n), 2, this.maxCell);
+    const W = this.cell * this.maze.w + 2 * this.margin, H = this.cell * this.maze.h + 2 * this.margin;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (this.canvas.width !== Math.round(W * dpr) || this.canvas.height !== Math.round(H * dpr)) {
+      this.canvas.width = Math.round(W * dpr);
+      this.canvas.height = Math.round(H * dpr);
+      this.canvas.style.width = W + "px";
+      this.canvas.style.height = H + "px";
+    }
+    this.dpr = dpr;
+    this.draw();
+  }
+  cellAt(e) {
+    if (!this.maze) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const sx = (e.clientX - rect.left) * (this.canvas.width / this.dpr / rect.width);
+    const sy = (e.clientY - rect.top) * (this.canvas.height / this.dpr / rect.height);
+    const c = Math.floor((sx - this.margin) / this.cell), r = Math.floor((sy - this.margin) / this.cell);
+    if (r < 0 || c < 0 || r >= this.maze.h || c >= this.maze.w) return null;
+    return { r, c };
+  }
+
+  // 完整迷宫，直接进入求解阶段（还没有求解结果）
+  setMaze(maze) {
+    this.pause();
+    this.maze = maze;
+    this.phase = "solve";
+    this.sol = null; this.step = 0;
+    this.stopEffects();
+    this.fit();
+  }
+  // 从全墙网格开始，按 steps 逐面拆墙
+  setGeneration(maze, steps) {
+    this.pause();
+    this.maze = maze;
+    this.phase = "gen";
+    this.genSteps = steps;
+    this.sol = null;
+    this.stopEffects();
+    this.resetGen();
+    this.fit();
+  }
+  resetGen() {
+    const n = this.maze.w * this.maze.h;
+    this.genWalls = new Uint8Array(n).fill(15);
+    this.carved = new Uint8Array(n);
+    this.breakAt = new Int32Array(n).fill(-1);     // 每格最后一次被拆墙是第几步（画拖尾）
+    this.step = 0;
+  }
+  applyBreak(i) {
+    const s = this.genSteps, r = s[i * 3], c = s[i * 3 + 1], d = s[i * 3 + 2];
+    const [dr, dc, mine, theirs] = DIRS[d];
+    const w = this.maze.w, a = r * w + c, b = (r + dr) * w + (c + dc);
+    this.genWalls[a] &= ~mine; this.genWalls[b] &= ~theirs;
+    this.carved[a] = this.carved[b] = 1;
+    this.breakAt[a] = this.breakAt[b] = i;
+  }
+  setEndpoints(s, e) { this.start = s; this.end = e; this.draw(); }
+  setSolution(sol) {
+    this.pause();
+    this.phase = "solve";
+    this.sol = sol;
+    this.step = 0;
+    this.stopEffects();
+    this.computeDepths();
+    this.draw();
+    this.emit("step");
+  }
+  computeDepths() {
+    const { visited, parents } = this.sol, n = visited.length / 2, w = this.maze.w;
+    const depthOf = new Map();
+    this.depth = new Int32Array(n);
+    this.maxDepth = 1;
+    for (let i = 0; i < n; i++) {
+      const pr = parents[i * 2], pc = parents[i * 2 + 1];
+      const d = pr < 0 ? 0 : (depthOf.get(pr * w + pc) ?? 0) + 1;
+      depthOf.set(visited[i * 2] * w + visited[i * 2 + 1], d);
+      this.depth[i] = d;
+      if (d > this.maxDepth) this.maxDepth = d;
+    }
+  }
+  total() {
+    if (this.phase === "gen") return this.genSteps ? this.genSteps.length / 3 : 0;
+    return this.sol ? this.sol.visited.length / 2 : 0;
+  }
+  isFinished() { const t = this.total(); return t > 0 && this.step >= t; }
+
+  // ---- 播放控制 ----
+  play() {
+    if (this.total() === 0) return;
+    if (this.isFinished()) this.reset();
+    this.playing = true; this.acc = 0;
+    this.emit("playing", true);
+    this.kick();
+  }
+  pause() {
+    if (!this.playing) return;
+    this.playing = false;
+    this.emit("playing", false);
+  }
+  stepOnce() { this.pause(); this.advance(1); }
+  reset() {
+    this.pause();
+    this.stopEffects();
+    if (this.phase === "gen") this.resetGen(); else this.step = 0;
+    this.draw();
+    this.emit("step");
+  }
+  skipToEnd() { this.pause(); this.advance(this.total() - this.step); }
+  setSpeed(sps) { this.sps = sps; }
+  advance(count) {
+    const total = this.total();
+    if (count <= 0 || this.step >= total) return;
+    const target = Math.min(total, this.step + count);
+    if (this.phase === "gen") for (let i = this.step; i < target; i++) this.applyBreak(i);
+    this.step = target;
+    if (this.step >= total) {
+      this.pause();
+      if (this.phase === "solve") this.startEffects();
+      this.draw();
+      this.emit("step");
+      this.emit("finished");
+      return;
+    }
+    this.draw();
+    this.emit("step");
+  }
+  startEffects() {
+    if (!this.sol || this.sol.path.length === 0) return;
+    this.effectStart = performance.now();
+    this.pathDur = clamp(600 + (this.sol.path.length / 2) * 12, 600, 1800);
+    this.pathProgress = 0; this.pulse = -1;
+    this.effects = true;
+    this.kick();
+  }
+  stopEffects() { this.effects = false; this.pathProgress = 0; this.pulse = -1; }
+  kick() {
+    if (this.raf) return;
+    this.lastT = performance.now();
+    const tick = (t) => {
+      this.raf = null;
+      const dt = Math.min(100, t - this.lastT);
+      this.lastT = t;
+      if (this.playing) {
+        this.acc += (dt * this.sps) / 1000;
+        const n = Math.floor(this.acc);
+        if (n > 0) { this.acc -= n; this.advance(n); }
+      }
+      if (this.effects) {
+        const e = t - this.effectStart;
+        this.pathProgress = clamp(e / this.pathDur, 0, 1);
+        const pe = e - this.pathDur;
+        if (pe >= 0) {
+          const loops = pe / 900;
+          this.pulse = loops < 3 ? loops % 1 : -1;
+          if (loops >= 3) this.effects = false;
+        }
+        this.draw();
+      }
+      if (this.playing || this.effects) this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  // ---- 绘制 ----
+  center(r, c) { return [this.margin + c * this.cell + this.cell / 2, this.margin + r * this.cell + this.cell / 2]; }
+  draw() {
+    const m = this.maze;
+    if (!m || !this.dpr) return;
+    const ctx = this.ctx, cs = this.cell, M = this.margin, w = m.w, h = m.h;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    roundRect(ctx, 0, 0, cs * w + 2 * M, cs * h + 2 * M, 10);
+    ctx.fillStyle = "#FFF1D6"; ctx.fill();
+
+    const pill = cs >= 9, inset = pill ? Math.max(1, cs * 0.08) : 0, rad = cs * 0.22;
+    const fillCell = (r, c, color) => {
+      ctx.fillStyle = color;
+      if (pill) { roundRect(ctx, M + c * cs + inset, M + r * cs + inset, cs - 2 * inset, cs - 2 * inset, rad); ctx.fill(); }
+      else ctx.fillRect(M + c * cs, M + r * cs, cs, cs);
+    };
+
+    let walls = m.walls;
+    if (this.phase === "gen") {
+      walls = this.genWalls;
+      const last = this.step - 1;
+      for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+        const k = r * w + c;
+        if (!this.carved[k]) { fillCell(r, c, "#FFF9EE"); continue; }
+        const age = last - this.breakAt[k];
+        if (age <= 0) fillCell(r, c, "#FF9F43");
+        else if (age < 14) fillCell(r, c, lerpColor([255, 208, 138], [255, 227, 179], age / 14));
+        else fillCell(r, c, "#FFE3B3");
+      }
+    } else {
+      const n = this.sol ? this.step : 0;
+      const seen = new Uint8Array(w * h);
+      for (let i = 0; i < n; i++) seen[this.sol.visited[i * 2] * w + this.sol.visited[i * 2 + 1]] = 1;
+      for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (!seen[r * w + c]) fillCell(r, c, "#FFF9EE");
+      for (let i = 0; i < n; i++) fillCell(this.sol.visited[i * 2], this.sol.visited[i * 2 + 1], heat(this.depth[i] / this.maxDepth));
+      // 父节点连线：从哪个格子走过来的
+      if (n > 0 && cs >= 8) {
+        ctx.strokeStyle = "rgba(139,94,60,0.35)";
+        ctx.lineWidth = Math.max(1, cs * 0.07);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const pr = this.sol.parents[i * 2];
+          if (pr < 0) continue;
+          const [x1, y1] = this.center(pr, this.sol.parents[i * 2 + 1]);
+          const [x2, y2] = this.center(this.sol.visited[i * 2], this.sol.visited[i * 2 + 1]);
+          ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+        }
+        ctx.stroke();
+      }
+      // 当前探索格（黄色 + 光晕）
+      if (n > 0 && n < this.total()) {
+        const r = this.sol.visited[(n - 1) * 2], c = this.sol.visited[(n - 1) * 2 + 1];
+        ctx.save();
+        ctx.shadowColor = "rgba(255, 200, 40, .9)"; ctx.shadowBlur = Math.max(6, cs * 0.8);
+        fillCell(r, c, "#FFE066");
+        ctx.restore();
+      }
+    }
+
+    // 墙
+    ctx.strokeStyle = "#8B5E3C";
+    ctx.lineWidth = Math.max(1.2, cs * 0.12);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+      const v = walls[r * w + c], x = M + c * cs, y = M + r * cs;
+      if (v & 1) { ctx.moveTo(x, y); ctx.lineTo(x + cs, y); }
+      if (v & 8) { ctx.moveTo(x, y); ctx.lineTo(x, y + cs); }
+      if (c === w - 1 && v & 2) { ctx.moveTo(x + cs, y); ctx.lineTo(x + cs, y + cs); }
+      if (r === h - 1 && v & 4) { ctx.moveTo(x, y + cs); ctx.lineTo(x + cs, y + cs); }
+    }
+    ctx.stroke();
+
+    // 最终路径：从起点"画"到终点，带光晕
+    if (this.phase === "solve" && this.sol && this.isFinished() && this.sol.path.length >= 2 && this.pathProgress > 0) this.drawPath();
+
+    // 起点 / 终点
+    if (this.phase === "solve" && this.start && this.end) {
+      const dot = (p, color) => {
+        const [x, y] = this.center(p.r, p.c);
+        ctx.beginPath(); ctx.arc(x, y, Math.max(3, cs * 0.3), 0, Math.PI * 2);
+        ctx.fillStyle = color; ctx.fill();
+        ctx.lineWidth = Math.max(1, cs * 0.08); ctx.strokeStyle = "#fff"; ctx.stroke();
+      };
+      dot(this.start, "#4CAF50");
+      dot(this.end, "#FF5E5E");
+      if (this.pulse >= 0) {
+        const [x, y] = this.center(this.end.r, this.end.c);
+        ctx.beginPath(); ctx.arc(x, y, cs * (0.35 + this.pulse * 1.2), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,94,94,${(1 - this.pulse) * 0.8})`;
+        ctx.lineWidth = Math.max(1.5, cs * 0.12); ctx.stroke();
+      }
+    }
+  }
+  drawPath() {
+    const ctx = this.ctx, p = this.sol.path, n = p.length / 2, cs = this.cell;
+    const upto = this.pathProgress * (n - 1);
+    const full = Math.floor(upto), frac = upto - full;
+    const pts = [];
+    for (let i = 0; i <= full && i < n; i++) pts.push(this.center(p[i * 2], p[i * 2 + 1]));
+    if (full + 1 < n && frac > 0) {
+      const [x1, y1] = this.center(p[full * 2], p[full * 2 + 1]), [x2, y2] = this.center(p[(full + 1) * 2], p[(full + 1) * 2 + 1]);
+      pts.push([x1 + (x2 - x1) * frac, y1 + (y2 - y1) * frac]);
+    }
+    const stroke = (width, color) => {
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (const [x, y] of pts) ctx.lineTo(x, y);
+      ctx.lineWidth = width; ctx.strokeStyle = color; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.stroke();
+    };
+    stroke(Math.max(4, cs * 0.55), "rgba(255,94,94,0.16)");
+    stroke(Math.max(3, cs * 0.32), "rgba(255,94,94,0.32)");
+    stroke(Math.max(1.6, cs * 0.14), "#FF5E5E");
+    const [tx, ty] = pts[pts.length - 1];
+    if (this.pathProgress < 1) {
+      ctx.beginPath(); ctx.arc(tx, ty, Math.max(2.5, cs * 0.2), 0, Math.PI * 2);
+      ctx.fillStyle = "#fff"; ctx.fill();
+    }
+  }
+}
+
+
+// =====================================================================
+// 算法实验室（对应 Qt 版的 MainWindow）
+// =====================================================================
+const Lab = (() => {
+  let view;
+  const st = { maze: null, genMicros: 0, genSteps: 0, loop: 0, start: { r: 0, c: 0 }, end: { r: 0, c: 0 }, sol: null, solveMicros: 0, source: "" };
+  let clickTarget = "start";
+
+  function init() {
+    view = new MazeView($("lab-canvas"), { maxCanvas: 640, interactive: true });
+    view.on("step", updateStats);
+    view.on("playing", updateButtons);
+    view.on("finished", () => {
+      if (view.phase === "gen") pushSolution();
+      updateButtons();
+    });
+    view.on("cell", (p, button) => {
+      if (button === "right" || (button === "left" && clickTarget === "end")) st.end = p; else st.start = p;
+      solve();
+    });
+    $("lab-loop").addEventListener("input", updateLoopText);
+    $("lab-speed").addEventListener("input", updateSpeed);
+    $("lab-generate").addEventListener("click", () => regenerate($("lab-anim").checked));
+    $("lab-solve").addEventListener("change", solve);
+    $("lab-play").addEventListener("click", () => (view.playing ? view.pause() : view.play()));
+    $("lab-step").addEventListener("click", () => view.stepOnce());
+    $("lab-skip").addEventListener("click", () => view.skipToEnd());
+    $("lab-reset").addEventListener("click", () => view.reset());
+    $("lab-click-start").addEventListener("click", () => setClickTarget("start"));
+    $("lab-click-end").addEventListener("click", () => setClickTarget("end"));
+    $("lab-to-gen").addEventListener("click", () => { GenCompare.setSize(readSize().w, readSize().h); location.hash = "gen"; });
+    $("lab-to-solve").addEventListener("click", () => { SolveCompare.useLab(); location.hash = "solve"; });
+    $("lab-legend").innerHTML =
+      '<span><i style="background:#4CAF50"></i>起点</span><span><i style="background:#FF5E5E"></i>终点</span>' +
+      '<span><i style="background:#FFE066"></i>当前探索格</span><span><i class="bar"></i>离起点 近→远</span>' +
+      '<span><i class="line" style="background:rgba(139,94,60,.5)"></i>父节点连线</span><span><i class="line" style="background:#FF5E5E"></i>最终路径</span>' +
+      '<span class="muted">桌面端：左键设起点，右键设终点</span>';
+    updateLoopText();
+    updateSpeed();
+    regenerate(false);
+  }
+  function setClickTarget(t) {
+    clickTarget = t;
+    $("lab-click-start").setAttribute("aria-pressed", t === "start");
+    $("lab-click-end").setAttribute("aria-pressed", t === "end");
+  }
+  function readSize() {
+    const w = clamp(parseInt($("lab-w").value, 10) || 15, 2, 120), h = clamp(parseInt($("lab-h").value, 10) || 15, 2, 120);
+    $("lab-w").value = w; $("lab-h").value = h;
+    return { w, h };
+  }
+  function updateLoopText() {
+    const v = +$("lab-loop").value;
+    $("lab-loop-text").textContent = v === 0 ? "0%（完美迷宫）" : `${v}%（有环路）`;
+  }
+  function updateSpeed() {
+    const sps = sliderToSps(+$("lab-speed").value);
+    view.setSpeed(sps);
+    $("lab-speed-text").textContent = `${sps} 步/秒`;
+  }
+  function currentAlgo() { return +$("lab-solve").value; }
+
+  function regenerate(animate) {
+    const { w, h } = readSize();
+    const algo = +$("lab-gen").value, loop = +$("lab-loop").value;
+    const seed = randomSeed();
+    const maze = Engine.generate(w, h, algo, seed, loop / 100);
+    st.genMicros = Engine.timeGenerate(w, h, algo, seed, loop / 100).micros;
+    adopt(maze, { r: 0, c: 0 }, { r: h - 1, c: w - 1 }, loop, animate, "");
+  }
+  // 换一张迷宫（自己生成的，或者从闯关页交过来的）
+  function adopt(maze, start, end, loopPercent, animate, source) {
+    st.maze = maze; st.genSteps = maze.steps.length / 3; st.loop = loopPercent; st.source = source;
+    st.start = start; st.end = end;
+    if (animate && maze.steps.length) view.setGeneration(maze, maze.steps); else view.setMaze(maze);
+    updateRecursiveAvailability();
+    solve();
+  }
+  function loadExternal(maze, loopPercent, source) {
+    $("lab-w").value = maze.w; $("lab-h").value = maze.h;
+    $("lab-gen").value = maze.algo;
+    $("lab-loop").value = loopPercent; updateLoopText();
+    st.genMicros = Engine.timeGenerate(maze.w, maze.h, maze.algo, maze.seed, maze.loopRate).micros;
+    adopt(maze, { r: 0, c: 0 }, { r: maze.h - 1, c: maze.w - 1 }, loopPercent, $("lab-anim").checked, source);
+  }
+  function solve() {
+    if (!st.maze) return;
+    const algo = currentAlgo();
+    try {
+      st.sol = Engine.solve(st.maze, algo, st.start, st.end);
+      st.solveMicros = Engine.timeSolve(st.maze, algo, st.start, st.end).micros;
+    } catch (e) {
+      st.sol = null;
+      $("lab-notice").textContent = "求解失败：" + e.message;
+      $("lab-notice").hidden = false;
+      return;
+    }
+    if (view.phase === "gen") { updateStats(); return; }   // 生成动画播完再交出求解结果
+    pushSolution();
+  }
+  function pushSolution() {
+    view.setEndpoints(st.start, st.end);
+    if (st.sol) view.setSolution(st.sol);
+    updateButtons();
+    updateStats();
+  }
+  function updateRecursiveAvailability() {
+    const cells = st.maze.w * st.maze.h, ok = cells <= MAX_RECURSIVE_CELLS;
+    const sel = $("lab-solve");
+    let switched = false;
+    for (const [rec, iter] of [[3, 0], [1, 2]]) {
+      const opt = sel.querySelector(`option[value="${rec}"]`);
+      opt.disabled = !ok;
+      if (!ok && +sel.value === rec) { sel.value = iter; switched = true; }
+    }
+    const note = $("lab-notice");
+    if (!ok) {
+      note.textContent = switched ? "迷宫超过 50×50 格，递归版可能栈溢出，已自动切换为对应的非递归版。" : "迷宫超过 50×50 格，已禁用两个递归版（递归深度可能超出系统栈）。";
+      note.hidden = false;
+    } else note.hidden = true;
+  }
+  function updateButtons() {
+    const what = view.phase === "gen" ? "生成" : "求解";
+    const has = view.total() > 0, fin = view.isFinished();
+    $("lab-play").textContent = view.playing ? "暂停" : fin ? "重新播放" + what : view.step > 0 ? "继续" + what : "播放" + what;
+    $("lab-play").disabled = !has;
+    $("lab-step").disabled = !has || fin;
+    $("lab-skip").disabled = !has || fin;
+    $("lab-reset").disabled = !has || view.step === 0;
+  }
+  function updateStats() {
+    if (!st.maze) return;
+    const { w, h } = st.maze, total = w * h, tree = total - 1, extra = st.genSteps - tree;
+    const rows = [];
+    const gray = (s) => `<span class="muted">${s}</span>`;
+    const gen = view.phase === "gen";
+    rows.push(["当前阶段", gen ? "<b>生成迷宫</b>" : "<b>求解迷宫</b>"]);
+    rows.push(["迷宫规模", `${h} 行 × ${w} 列（共 ${total} 格）` + (st.source ? " " + gray(st.source) : "")]);
+    rows.push(["生成算法", extra > 0
+      ? `${GEN_NAME[st.maze.algo]} + 环路 ${st.loop}%，拆墙 ${tree}+${extra} 次，${fmtMicros(st.genMicros)}`
+      : `${GEN_NAME[st.maze.algo]}，拆墙 ${st.genSteps} 次，${fmtMicros(st.genMicros)}`]);
+    if (gen) {
+      let prog = `${view.step} / ${view.total()} 步`;
+      if (extra > 0) prog += " " + gray(view.step <= tree ? "（生成树）" : "（额外拆墙造环路）");
+      rows.push(["拆墙进度", prog]);
+      rows.push(["求解算法", ALGO_NAME[currentAlgo()] + " " + gray("（生成播完后开始）")]);
+    } else if (st.sol) {
+      const v = st.sol.visited.length / 2, pl = st.sol.path.length / 2;
+      rows.push(["求解算法", `<b>${ALGO_NAME[currentAlgo()]}</b>`]);
+      rows.push(["起点 → 终点", `(${st.start.r},${st.start.c}) → (${st.end.r},${st.end.c})`]);
+      rows.push(["动画进度", `${view.step} / ${v} 步`]);
+      rows.push(["总访问格数", `${v} 格（占 ${((100 * v) / total).toFixed(1)}%）`]);
+      rows.push(["路径长度", pl ? `${pl} 格` : '<span class="no">终点不可达</span>']);
+      rows.push(["求解耗时", `${fmtMicros(st.solveMicros)} ${gray("（不含动画）")}`]);
+    }
+    $("lab-stats").innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+    updateButtons();
+  }
+  return { init, loadExternal, get state() { return st; }, pause: () => view.pause(), refit: () => view.fit() };
+})();
+
+
+// 统计一个完美/带环迷宫的形状指标（与 Qt 版 GenCompareDialog::measure 相同的定义）
+function shapeStats(maze) {
+  const { w, h, walls } = maze;
+  let dead = 0, junc = 0, straight = 0, removed = 0;
+  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+    const v = walls[r * w + c];
+    const open = 4 - ((v & 1 ? 1 : 0) + (v & 2 ? 1 : 0) + (v & 4 ? 1 : 0) + (v & 8 ? 1 : 0));
+    if (open === 1) dead++;
+    if (open >= 3) junc++;
+    if (open === 2 && ((!(v & 1) && !(v & 4)) || (!(v & 2) && !(v & 8)))) straight++;
+    if (c < w - 1 && !(v & 2)) removed++;
+    if (r < h - 1 && !(v & 4)) removed++;
+  }
+  const sol = Engine.solve(maze, 0, { r: 0, c: 0 }, { r: h - 1, c: w - 1 });
+  const p = sol.path, n = p.length / 2;
+  let turns = 0;
+  for (let i = 2; i < n; i++) {
+    const dr1 = p[(i - 1) * 2] - p[(i - 2) * 2], dc1 = p[(i - 1) * 2 + 1] - p[(i - 2) * 2 + 1];
+    const dr2 = p[i * 2] - p[(i - 1) * 2], dc2 = p[i * 2 + 1] - p[(i - 1) * 2 + 1];
+    if (dr1 !== dr2 || dc1 !== dc2) turns++;
+  }
+  return { dead, junc, straight: (100 * straight) / (w * h), removed, pathLen: n, turns };
+}
+
+// =====================================================================
+// 生成算法对比（对应 Qt 版的 GenCompareDialog）
+// =====================================================================
+const GenCompare = (() => {
+  let views = [], w = 15, h = 15, avg = [null, null], samples = 30, built = false, dirty = true;
+  function init() {
+    views = [0, 1].map((i) => new MazeView($("gen-c" + i), { maxCanvas: 360, maxCell: 30 }));
+    views.forEach((v, i) => {
+      v.on("step", () => { caption(i); buttons(); });
+      v.on("playing", buttons);
+      v.on("finished", () => {
+        if (v.phase === "gen") {   // 生成播完：显示 BFS 最短路线 + 热力图，直观比较两种迷宫的"形状"
+          const m = v.maze, s = { r: 0, c: 0 }, e = { r: m.h - 1, c: m.w - 1 };
+          v.setEndpoints(s, e);
+          v.setSolution(Engine.solve(m, 0, s, e));
+          v.skipToEnd();
+        }
+        caption(i); buttons();
+      });
+    });
+    $("gen-speed").addEventListener("input", speed);
+    $("gen-play").addEventListener("click", () => {
+      if (views.some((v) => v.playing)) views.forEach((v) => v.pause());
+      else if (views.every((v) => v.phase === "solve")) newSampleSame();
+      else views.forEach((v) => v.play());
+    });
+    $("gen-skip").addEventListener("click", () => views.forEach((v) => v.skipToEnd()));
+    $("gen-reset").addEventListener("click", newSampleSame);
+    $("gen-new").addEventListener("click", newSample);
+    $("gen-apply").addEventListener("click", () => {
+      setSize(parseInt($("gen-w").value, 10) || 15, parseInt($("gen-h").value, 10) || 15);
+      enter();
+    });
+    speed();
+  }
+  function setSize(nw, nh) {
+    nw = clamp(nw, 2, 80); nh = clamp(nh, 2, 80);
+    if (nw !== w || nh !== h) dirty = true;
+    w = nw; h = nh;
+    $("gen-w").value = w; $("gen-h").value = h;
+  }
+  function speed() {
+    const sps = sliderToSps(+$("gen-speed").value);
+    views.forEach((v) => v.setSpeed(sps));
+    $("gen-speed-text").textContent = `${sps} 步/秒`;
+  }
+  let sampleSeed = 0;
+  function newSample() { sampleSeed = randomSeed(); newSampleSame(); }
+  function newSampleSame() {
+    views.forEach((v, i) => {
+      const m = Engine.generate(w, h, i, sampleSeed + i, 0);
+      v.setGeneration(m, m.steps);
+      caption(i);
+    });
+    buttons();
+  }
+  function caption(i) {
+    const v = views[i];
+    $("gen-cap" + i).textContent = v.phase === "gen"
+      ? `拆墙 ${v.step} / ${v.total()}`
+      : `已完成：拆墙 ${v.maze.steps.length / 3} 次 · BFS 最短路径 ${v.sol ? v.sol.path.length / 2 : "—"} 格`;
+  }
+  function buttons() {
+    const any = views.some((v) => v.playing), done = views.every((v) => v.phase === "solve"), started = views.some((v) => v.phase === "solve" || v.step > 0);
+    $("gen-play").textContent = any ? "暂停" : done ? "重新播放" : started ? "继续" : "同步播放";
+    $("gen-skip").disabled = done;
+  }
+  function enter() {
+    views.forEach((v) => v.fit());
+    if (!dirty && built) return;
+    dirty = false; built = true;
+    newSample();
+    $("gen-summary").innerHTML = '<span class="muted">正在统计多个随机迷宫…</span>';
+    setTimeout(runStatistics, 30);
+  }
+  function runStatistics() {
+    samples = clamp(Math.floor(200000 / (w * h)), 20, 100);
+    const seeds = Array.from({ length: samples }, (_, i) => 1000 + i);   // 固定种子，结果可复现
+    avg = [0, 1].map((algo) => {
+      const micros = Engine.timeBatch(w, h, algo, seeds);
+      const sum = { dead: 0, junc: 0, straight: 0, removed: 0, pathLen: 0, turns: 0 };
+      for (const s of seeds) {
+        const st = shapeStats(Engine.generate(w, h, algo, s, 0));
+        for (const k in sum) sum[k] += st[k];
+      }
+      const a = { micros };
+      for (const k in sum) a[k] = sum[k] / samples;
+      return a;
+    });
+    table(); summary();
+  }
+  function table() {
+    const [k, p] = avg;
+    const rowsDef = [
+      ["平均生成耗时", fmtMicros(k.micros), fmtMicros(p.micros)],
+      ["拆墙次数", Math.round(k.removed), Math.round(p.removed)],
+      ["死胡同（1 个出口）", Math.round(k.dead), Math.round(p.dead)],
+      ["岔路口（3~4 个出口）", Math.round(k.junc), Math.round(p.junc)],
+      ["直道格占比", k.straight.toFixed(1) + "%", p.straight.toFixed(1) + "%"],
+      ["左上→右下路径长度", Math.round(k.pathLen), Math.round(p.pathLen)],
+      ["路径拐弯次数", Math.round(k.turns), Math.round(p.turns)],
+    ];
+    $("gen-table").innerHTML = `<tr><th>指标（${samples} 个迷宫平均）</th><th>Kruskal</th><th>Prim</th></tr>` +
+      rowsDef.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("");
+    $("gen-note").innerHTML = `说明：每种算法各 ${samples} 个 ${h}×${w} 随机迷宫（固定种子，可复现）取平均；耗时为浏览器中 WebAssembly 的实测值，不含动画。<br>` +
+      "理论复杂度（E 为内部墙数，约 2N）：Kruskal = 随机打乱 O(E) + 并查集 O(E·α(N))；Prim = 每面墙进出二叉堆一次 O(E log E)。";
+  }
+  function summary() {
+    const [k, p] = avg, n = w * h, parts = [];
+    if (Math.round(k.removed) === n - 1 && Math.round(p.removed) === n - 1)
+      parts.push(`两种算法都恰好拆墙 <b>N−1 = ${n - 1}</b> 次：${n} 个格子连成一棵生成树，这正是“完美迷宫：连通且只有一条路”的证明`);
+    const kf = k.micros < p.micros, ratio = kf ? p.micros / Math.max(0.001, k.micros) : k.micros / Math.max(0.001, p.micros);
+    parts.push(`${kf ? "Kruskal" : "Prim"} 生成更快（约为另一种的 ${ratio.toFixed(1)} 倍速度）`);
+    const similar = (a, b) => Math.abs(a - b) <= 0.05 * Math.max(a, b);
+    const cmp = (a, b, what, more) => {
+      a = Math.round(a); b = Math.round(b);
+      if (similar(a, b)) return `${what}差不多（${a} 对 ${b}）`;
+      return `${a > b ? "Kruskal" : "Prim"}的${what}${more}（${Math.max(a, b)} 对 ${Math.min(a, b)}）`;
+    };
+    parts.push(cmp(k.dead, p.dead, "死胡同数量", "更多"));
+    const pathSimilar = Math.abs(k.pathLen - p.pathLen) <= 0.1 * Math.max(k.pathLen, p.pathLen);
+    parts.push(pathSimilar ? `起点→终点路径长度差不多（${Math.round(k.pathLen)} 对 ${Math.round(p.pathLen)}）` : cmp(k.pathLen, p.pathLen, "起点→终点路径长度", "更长"));
+    let html = "<b>结论：</b>" + parts.join("；") + "。";
+    if (similar(k.dead, p.dead) && similar(k.junc, p.junc) && similar(k.straight, p.straight) && pathSimilar)
+      html += "<br><b>为什么形状几乎一样？</b>两者本质上都是在“随机权重的网格图”上求最小生成树（Kruskal 随机打乱墙的顺序，Prim 给每面墙随机权重），" +
+        "得到的迷宫在统计上属于同一种分布；真正的区别在于<b>生成过程</b>（Kruskal 全图多处同时合并、靠并查集判断是否成环；Prim 从一点向外生长、靠堆选出最小边）和<b>速度</b>。";
+    $("gen-summary").innerHTML = html;
+  }
+  return { init, enter, setSize, pause: () => views.forEach((v) => v.pause()) };
+})();
+
+// =====================================================================
+// 求解算法对比（对应 Qt 版的 CompareDialog）
+// =====================================================================
+const SolveCompare = (() => {
+  const ORDER = [0, 3, 1, 2];
+  let maze = null, start, end, desc = "", views = [], results = [], dirty = true;
+  function init() {
+    $("solve-speed").addEventListener("input", speed);
+    $("solve-play").addEventListener("click", () => {
+      const live = views.filter(Boolean);
+      if (live.some((v) => v.playing)) live.forEach((v) => v.pause());
+      else live.forEach((v) => v.play());
+    });
+    $("solve-skip").addEventListener("click", () => views.forEach((v) => v && v.skipToEnd()));
+    $("solve-reset").addEventListener("click", () => views.forEach((v) => v && v.reset()));
+    $("solve-from-lab").addEventListener("click", () => { useLab(); enter(); });
+    $("solve-loop-demo").addEventListener("click", () => {
+      const m = Engine.generate(20, 20, randomSeed() % 2, randomSeed(), 0.15);
+      set(m, { r: 0, c: 0 }, { r: 19, c: 19 }, `20 行 × 20 列，${GEN_NAME[m.algo]} 生成，环路比例 15%`);
+      enter();
+    });
+  }
+  function speed() {
+    const sps = sliderToSps(+$("solve-speed").value);
+    views.forEach((v) => v && v.setSpeed(sps));
+    $("solve-speed-text").textContent = `${sps} 步/秒`;
+  }
+  function set(m, s, e, d) { maze = m; start = s; end = e; desc = d; dirty = true; }
+  function useLab() {
+    const st = Lab.state;
+    if (!st.maze) return;
+    set(st.maze, st.start, st.end,
+      `${st.maze.h} 行 × ${st.maze.w} 列，${GEN_NAME[st.maze.algo]} 生成，${st.loop > 0 ? "环路比例 " + st.loop + "%" : "完美迷宫"}${st.source ? "（" + st.source + "）" : ""}`);
+  }
+  function enter() {
+    if (!maze) useLab();
+    if (!dirty) { views.forEach((v) => v && v.fit()); return; }
+    dirty = false;
+    build();
+  }
+  function build() {
+    views.forEach((v) => v && v.pause());
+    const cells = maze.w * maze.h, recOk = cells <= MAX_RECURSIVE_CELLS;
+    $("solve-desc").textContent = `迷宫：${desc}　起点 (${start.r},${start.c}) → 终点 (${end.r},${end.c})`;
+    const grid = $("solve-grid");
+    grid.innerHTML = "";
+    views = []; results = [];
+    for (const algo of ORDER) {
+      const cell = document.createElement("div");
+      cell.className = "compare-cell";
+      cell.innerHTML = `<h3>${ALGO_FULL[algo]}</h3>`;
+      const ran = recOk || algo === 0 || algo === 2;
+      const r = { algo, ran };
+      if (ran) {
+        r.sol = Engine.solve(maze, algo, start, end);
+        const t = Engine.timeSolve(maze, algo, start, end);
+        r.micros = t.micros; r.reps = t.reps;
+        const cv = document.createElement("canvas");
+        cv.className = "maze";
+        cell.appendChild(cv);
+        const cap = document.createElement("div");
+        cap.className = "cap";
+        cell.appendChild(cap);
+        grid.appendChild(cell);
+        const v = new MazeView(cv, { maxCanvas: 300, maxCell: 26 });
+        v.setMaze(maze);
+        v.setEndpoints(start, end);
+        v.setSolution(r.sol);
+        const capText = () => { cap.textContent = `已访问 ${v.step} / ${v.total()} 格　路径 ${r.sol.path.length ? r.sol.path.length / 2 + " 格" : "不可达"}`; };
+        v.on("step", () => { capText(); buttons(); });
+        v.on("playing", buttons);
+        v.on("finished", buttons);
+        capText();
+        views.push(v);
+      } else {
+        cell.insertAdjacentHTML("beforeend", '<div class="skipped">迷宫超过 50×50 格，<br>递归版可能栈溢出，已跳过</div>');
+        grid.appendChild(cell);
+        views.push(null);
+      }
+      results.push(r);
+    }
+    speed();
+    buttons();
+    table();
+    summary();
+  }
+  function buttons() {
+    const live = views.filter(Boolean);
+    const any = live.some((v) => v.playing), fin = live.every((v) => v.isFinished()), started = live.some((v) => v.step > 0);
+    $("solve-play").textContent = any ? "暂停" : fin ? "重新播放" : started ? "继续" : "同步播放";
+    $("solve-skip").disabled = fin;
+    $("solve-reset").disabled = !started;
+  }
+  function table() {
+    const total = maze.w * maze.h;
+    let shortest = 0;
+    for (const r of results) if (r.ran && r.sol.path.length && (!shortest || r.sol.path.length < shortest)) shortest = r.sol.path.length;
+    const rows = results.map((r) => {
+      if (!r.ran) return `<tr><td>${ALGO_FULL[r.algo]}</td><td>已跳过（迷宫过大）</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>`;
+      const v = r.sol.visited.length / 2, pl = r.sol.path.length;
+      const best = !pl ? "—" : pl === shortest ? '<span class="yes">是</span>' : '<span class="no">否</span>';
+      return `<tr><td>${ALGO_FULL[r.algo]}</td><td>${v}</td><td>${((100 * v) / total).toFixed(1)}%</td><td>${pl ? pl / 2 : "不可达"}</td><td>${best}</td><td>${fmtMicros(r.micros)}</td><td>${r.reps}</td></tr>`;
+    });
+    $("solve-table").innerHTML = "<tr><th>算法</th><th>访问格数</th><th>访问占比</th><th>路径长度</th><th>是否最短路径</th><th>平均求解耗时</th><th>测量次数</th></tr>" + rows.join("");
+  }
+  function summary() {
+    const find = (a) => results.find((r) => r.algo === a);
+    const bfs = find(0), bfsRec = find(3), rec = find(1), iter = find(2);
+    if (!bfs.sol.path.length || !iter.sol.path.length) { $("solve-summary").innerHTML = "终点不可达，无法比较路径。"; return; }
+    const parts = [];
+    const vb = bfs.sol.visited.length / 2, vd = iter.sol.visited.length / 2;
+    if (vd < vb) parts.push(`DFS 访问 ${vd} 格，比 BFS（${vb} 格）少 <b>${((100 * (vb - vd)) / vb).toFixed(1)}%</b>`);
+    else if (vd > vb) parts.push(`DFS 访问 ${vd} 格，比 BFS（${vb} 格）多 <b>${((100 * (vd - vb)) / vb).toFixed(1)}%</b>`);
+    else parts.push(`BFS 与 DFS 访问格数相同（${vb} 格）`);
+    const pb = bfs.sol.path.length / 2, pd = iter.sol.path.length / 2;
+    parts.push(pb === pd ? `路径长度相同（${pb} 格）` : `BFS 路径 ${pb} 格为最短，DFS 路径 ${pd} 格（多 ${pd - pb} 格）`);
+    if (bfsRec.ran && rec.ran) {
+      const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+      const ok = same(bfs.sol.visited, bfsRec.sol.visited) && same(bfs.sol.path, bfsRec.sol.path) && same(rec.sol.visited, iter.sol.visited) && same(rec.sol.path, iter.sol.path);
+      parts.push(ok ? "BFS、DFS 各自的递归版与非递归版访问顺序<b>逐格完全一致</b>，区别只在于用系统调用栈还是显式的队列/栈"
+        : '<span class="no">注意：递归版与非递归版访问顺序不一致</span>');
+    }
+    $("solve-summary").innerHTML = "<b>结论：</b>" + parts.join("；") + "。";
+  }
+  return { init, enter, useLab, pause: () => views.forEach((v) => v && v.pause()) };
+})();
+
+// =====================================================================
+// 闯关冒险：小探险家找宝箱（对应 Qt 版的 GamePage + GameWidget）
+// =====================================================================
+const Game = (() => {
+  // 一关的完整流程：生成动画（intro）→ 玩家闯关（play）→ 结算（won）→ 算法复盘（replay）
+  const LEVELS = [
+    { name: "新手营地", w: 8, h: 8, loop: 0, seed: 11, algo: 0 },
+    { name: "林间小径", w: 10, h: 10, loop: 0, seed: 23, algo: 1 },
+    { name: "蘑菇山谷", w: 12, h: 12, loop: 0.06, seed: 29, algo: 0 },
+    { name: "古树迷阵", w: 15, h: 15, loop: 0.08, seed: 41, algo: 1 },
+    { name: "遗迹深处", w: 18, h: 18, loop: 0.10, seed: 59, algo: 0 },
+    { name: "宝藏神殿", w: 22, h: 22, loop: 0.12, seed: 73, algo: 1 },
+  ];
+  const ALGO_ORDER = [0, 3, 1, 2];
+  const canvas = () => $("game-canvas");
+  let ctx, cell = 30, M = 8, dpr = 1;
+  let level = 0, maze = null, shortest = [], best = loadBest();
+  const g = { mode: "play", pos: { r: 0, c: 0 }, from: { r: 0, c: 0 }, moveT: 1, facingLeft: false, steps: 0, started: 0, elapsed: 0, won: false, wonAt: 0,
+    trail: null, route: [], bump: null, pending: null, showRoute: false, confetti: [], intro: null, rp: null };
+  let raf = null, active = false;
+
+  function loadBest() { try { return JSON.parse(localStorage.getItem("maze-best-stars") || "[]"); } catch { return []; } }
+  function saveBest() { try { localStorage.setItem("maze-best-stars", JSON.stringify(best)); } catch { /* 无痕模式等情况下不保存 */ } }
+
+  function init() {
+    ctx = canvas().getContext("2d");
+    renderLevels();
+    $("g-restart").addEventListener("click", () => startLevel(level, false));
+    $("g-route").addEventListener("click", () => setRoute(!g.showRoute));
+    $("g-tolab").addEventListener("click", () => openInLab(+$("lab-solve").value));
+    $("intro-skip").addEventListener("click", finishIntro);
+    $("r-replay").addEventListener("click", enterReplay);
+    $("r-again").addEventListener("click", () => startLevel(level, false));
+    $("r-next").addEventListener("click", () => startLevel(Math.min(LEVELS.length - 1, level + 1), true));
+    $("rp-play").addEventListener("click", () => {
+      const rp = g.rp;
+      if (rp.playing) rp.playing = false;
+      else { if (rp.step >= rp.total) { rp.step = 0; rp.pathT = 0; } rp.playing = true; rp.last = performance.now(); }
+      replayButtons(); kick();
+    });
+    $("rp-skip").addEventListener("click", () => { g.rp.step = g.rp.total; g.rp.playing = false; g.rp.pathStart = performance.now(); replayButtons(); kick(); });
+    $("rp-mine").addEventListener("change", kick);
+    $("rp-back").addEventListener("click", () => startLevel(level, false));
+    $("rp-next").addEventListener("click", () => startLevel(Math.min(LEVELS.length - 1, level + 1), true));
+    $("rp-lab").addEventListener("click", () => openInLab(g.rp.algo));
+    $("rp-algos").innerHTML = ALGO_ORDER.map((a) => `<button data-algo="${a}" aria-pressed="false">${ALGO_NAME[a]}</button>`).join("");
+    $("rp-algos").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => selectReplayAlgo(+b.dataset.algo)));
+    document.querySelectorAll(".dpad button").forEach((b) => b.addEventListener("click", () => move(+b.dataset.dir)));
+    document.addEventListener("keydown", onKey);
+    // 手机：在画面上滑动
+    let sx = 0, sy = 0, tracking = false;
+    canvas().addEventListener("pointerdown", (e) => { sx = e.clientX; sy = e.clientY; tracking = true; canvas().focus({ preventScroll: true }); });
+    canvas().addEventListener("pointerup", (e) => {
+      if (!tracking) return;
+      tracking = false;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+      move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
+    });
+    canvas().style.touchAction = "none";
+    new ResizeObserver(() => fit()).observe($("game-box").parentElement);
+    startLevel(0, true);
+  }
+  function openInLab(algo) {
+    const L = LEVELS[level];
+    $("lab-solve").value = algo;
+    Lab.loadExternal(maze, Math.round(L.loop * 100), `关卡「${L.name}」`);
+    location.hash = "lab";
+  }
+  function renderLevels() {
+    $("levels").innerHTML = LEVELS.map((L, i) => {
+      const s = best[i] || 0;
+      return `<button data-lv="${i}" aria-pressed="${i === level}"><span class="lv">${i + 1}. ${L.name}</span>` +
+        `<span class="meta">${L.w}×${L.h} · ${GEN_NAME[L.algo]}${L.loop ? " · 有环路" : ""}</span>` +
+        `<span class="stars" aria-label="最好成绩 ${s} 星"><span class="on">${"★".repeat(s)}</span><span class="off">${"★".repeat(3 - s)}</span></span></button>`;
+    }).join("");
+    $("levels").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => startLevel(+b.dataset.lv, true)));
+  }
+
+  // withIntro=true：先播放这一关迷宫的生成过程（选关、下一关）；重新开始/再玩一次则直接开玩
+  function startLevel(i, withIntro) {
+    level = i;
+    const L = LEVELS[i];
+    maze = Engine.generate(L.w, L.h, L.algo, L.seed, L.loop);
+    maze.seed = L.seed;
+    const sol = Engine.solve(maze, 0, { r: 0, c: 0 }, { r: L.h - 1, c: L.w - 1 });
+    shortest = [];
+    for (let k = 0; k < sol.path.length; k += 2) shortest.push([sol.path[k], sol.path[k + 1]]);
+    Object.assign(g, { mode: "play", pos: { r: 0, c: 0 }, from: { r: 0, c: 0 }, moveT: 1, facingLeft: false, steps: 0, started: 0, elapsed: 0, won: false, wonAt: 0,
+      trail: new Uint8Array(L.w * L.h), route: [[0, 0]], bump: null, pending: null, confetti: [], intro: null, rp: null });
+    g.trail[0] = 1;
+    setRoute(false);
+    $("result").hidden = true;
+    $("replay").hidden = true;
+    $("card-levels").hidden = $("card-level").hidden = false;
+    $("play-controls").hidden = false;
+    $("hud-best").textContent = shortest.length - 1;
+    if (withIntro) startIntro(); else $("intro").hidden = true;
+    renderLevels();
+    hud();
+    fit();
+    kick();
+    if (active) canvas().focus({ preventScroll: true });
+  }
+
+  // ---------------- 1. 生成动画：按 A 的算法记录的拆墙顺序"长出"迷宫 ----------------
+  function startIntro() {
+    const n = maze.w * maze.h, total = maze.steps.length / 3;
+    g.mode = "intro";
+    g.intro = { walls: new Uint8Array(n).fill(15), carved: new Uint8Array(n), breakAt: new Int32Array(n).fill(-1), step: 0, total,
+      start: performance.now(), dur: clamp(total * 14, 1800, 4200) };
+    $("intro").hidden = false;
+    introText();
+  }
+  function introStepTo(target) {
+    const it = g.intro, s = maze.steps, w = maze.w;
+    for (let i = it.step; i < target; i++) {
+      const r = s[i * 3], c = s[i * 3 + 1], [dr, dc, mine, theirs] = DIRS[s[i * 3 + 2]];
+      const a = r * w + c, b = (r + dr) * w + (c + dc);
+      it.walls[a] &= ~mine; it.walls[b] &= ~theirs;
+      it.carved[a] = it.carved[b] = 1;
+      it.breakAt[a] = it.breakAt[b] = i;
+    }
+    it.step = Math.max(it.step, target);
+  }
+  function introText() {
+    const it = g.intro, L = LEVELS[level], tree = maze.w * maze.h - 1;
+    const how = L.algo === 0 ? "Kruskal：随机挑墙，用并查集判断两边是否已连通，不连通才拆" : "Prim：从一个格子向外生长，每次用堆取出最小的边界墙";
+    const phase = it.step <= tree ? `生成树 ${Math.min(it.step, tree)} / ${tree}` : `额外拆墙造环路 ${it.step - tree} / ${it.total - tree}`;
+    $("intro-text").innerHTML = `<b>第 ${level + 1} 关 · ${L.name}</b>　森林正在长出迷宫……<br><span>${how}　·　${phase}</span>`;
+  }
+  function finishIntro() {
+    if (g.mode !== "intro") return;
+    introStepTo(g.intro.total);
+    g.mode = "play";
+    g.intro = null;
+    $("intro").hidden = true;
+    kick();
+  }
+
+  // ---------------- 2. 闯关 ----------------
+  function setRoute(on) {
+    g.showRoute = on;
+    $("g-route").setAttribute("aria-pressed", on);
+    $("g-route").textContent = on ? "隐藏最短路线" : "显示最短路线";
+    kick();
+  }
+  function fit() {
+    if (!maze) return;
+    const box = $("game-box"), avail = box.parentElement.clientWidth - 24;
+    if (avail <= 0) return;
+    const size = Math.min(avail, 600);
+    M = 8;
+    cell = clamp(Math.floor((size - 2 * M) / Math.max(maze.w, maze.h)), 12, 56);
+    const W = cell * maze.w + 2 * M, H = cell * maze.h + 2 * M;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cv = canvas();
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    draw(performance.now());
+  }
+  function onKey(e) {
+    if (!active || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || "")) return;
+    const map = { ArrowUp: 0, KeyW: 0, ArrowRight: 1, KeyD: 1, ArrowDown: 2, KeyS: 2, ArrowLeft: 3, KeyA: 3 };
+    if (e.code === "KeyR") { startLevel(level, false); e.preventDefault(); return; }
+    if (e.code in map) {
+      e.preventDefault();
+      if (g.mode === "intro") { finishIntro(); return; }   // 生成动画中按方向键：直接跳过动画
+      move(map[e.code]);
+    }
+  }
+  function move(dir) {
+    if (!maze || g.mode !== "play") { if (g.mode === "intro") finishIntro(); return; }
+    if (g.moveT < 1) { g.pending = dir; return; }     // 正在走：记住下一步
+    const [dr, dc, bit] = DIRS[dir];
+    if (dir === 1) g.facingLeft = false;
+    if (dir === 3) g.facingLeft = true;
+    if (maze.walls[g.pos.r * maze.w + g.pos.c] & bit) {   // 撞墙：抖一下，不计步
+      g.bump = { dir, t: performance.now() };
+      kick();
+      return;
+    }
+    if (!g.started) g.started = performance.now();
+    g.from = { ...g.pos };
+    g.pos = { r: g.pos.r + dr, c: g.pos.c + dc };
+    g.moveT = 0; g.moveStart = performance.now();
+    g.steps++;
+    g.trail[g.pos.r * maze.w + g.pos.c] = 1;
+    g.route.push([g.pos.r, g.pos.c]);
+    hud();
+    kick();
+  }
+  function hud() {
+    $("hud-steps").textContent = g.steps;
+    $("hud-time").textContent = (g.won ? g.elapsed : g.started ? (performance.now() - g.started) / 1000 : 0).toFixed(1);
+  }
+
+  // ---------------- 3. 结算 ----------------
+  function win() {
+    g.won = true;
+    g.mode = "won";
+    g.wonAt = performance.now();
+    g.elapsed = (g.wonAt - g.started) / 1000;
+    const minSteps = shortest.length - 1;
+    const eff = minSteps / Math.max(1, g.steps);
+    const stars = eff >= 0.95 ? 3 : eff >= 0.7 ? 2 : 1;
+    if ((best[level] || 0) < stars) { best[level] = stars; saveBest(); }
+    renderLevels();
+    hud();
+    const W = cell * maze.w + 2 * M;
+    const colors = ["#FF9F43", "#FFC93C", "#5DADE2", "#FF5E5E", "#7CC46A", "#C3B1E1"];
+    for (let i = 0; i < 90; i++) g.confetti.push({ x: W / 2 + (Math.random() - 0.5) * W * 0.3, y: -10 - Math.random() * 60, vx: (Math.random() - 0.5) * 5, vy: Math.random() * 2 + 1, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.3, color: colors[i % colors.length], size: 4 + Math.random() * 4 });
+    setTimeout(() => {
+      if (g.mode !== "won") return;
+      $("r-stars").innerHTML = [0, 1, 2].map((i) => `<span class="${i < stars ? "on" : "off"}">★</span>`).join("");
+      $("r-steps").textContent = g.steps;
+      $("r-short").textContent = minSteps;
+      $("r-eff").textContent = Math.round(eff * 100) + "%";
+      $("r-time").textContent = g.elapsed.toFixed(1) + "s";
+      const extra = g.steps - minSteps;   // 三星允许比最短多 5% 以内，所以"三星"不等于"和最短一样短"
+      $("r-title").textContent = extra === 0 ? "完美通关！" : stars === 3 ? "三星通关！" : "找到宝箱啦！";
+      $("r-comment").textContent = extra === 0 ? "和 BFS 算出的最短路线一样短，厉害！"
+        : stars === 3 ? `只比最短路线多走了 ${extra} 步，非常接近！点“算法复盘”看看差在哪里。`
+        : `比最短路线多走了 ${extra} 步。点“算法复盘”看看 BFS 和 DFS 是怎么找到宝箱的。`;
+      $("r-next").disabled = level === LEVELS.length - 1;
+      $("result").hidden = false;
+    }, 900);
+    kick();
+  }
+
+  // ---------------- 4. 算法复盘：在刚玩过的这张地图上回放 B 的求解算法 ----------------
+  function enterReplay() {
+    $("result").hidden = true;
+    $("play-controls").hidden = true;
+    $("replay").hidden = false;
+    $("card-levels").hidden = $("card-level").hidden = true;
+    g.mode = "replay";
+    g.showRoute = false;
+    const s = { r: 0, c: 0 }, e = { r: maze.h - 1, c: maze.w - 1 };
+    g.rpAll = {};
+    for (const a of ALGO_ORDER) g.rpAll[a] = Engine.solve(maze, a, s, e);
+    selectReplayAlgo(0);
+    $("replay").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  function selectReplayAlgo(algo) {
+    const sol = g.rpAll[algo], n = sol.visited.length / 2, w = maze.w;
+    const depthOf = new Map(), depth = new Int32Array(n);
+    let maxDepth = 1;
+    for (let i = 0; i < n; i++) {
+      const pr = sol.parents[i * 2];
+      const d = pr < 0 ? 0 : (depthOf.get(pr * w + sol.parents[i * 2 + 1]) ?? 0) + 1;
+      depthOf.set(sol.visited[i * 2] * w + sol.visited[i * 2 + 1], d);
+      depth[i] = d; if (d > maxDepth) maxDepth = d;
+    }
+    g.rp = { algo, sol, depth, maxDepth, step: 0, total: n, playing: true, last: performance.now(), sps: Math.max(8, n / 5), pathStart: 0 };
+    $("rp-algos").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", +b.dataset.algo === algo));
+    replayFacts();
+    replayButtons();
+    kick();
+  }
+  function replayButtons() {
+    const rp = g.rp;
+    $("rp-play").textContent = rp.playing ? "暂停" : rp.step >= rp.total ? "重新播放" : rp.step > 0 ? "继续" : "播放";
+    $("rp-skip").disabled = rp.step >= rp.total;
+    $("rp-next").disabled = level === LEVELS.length - 1;
+  }
+  function replayFacts() {
+    const all = g.rpAll, minSteps = shortest.length - 1, cells = maze.w * maze.h;
+    const seen = g.trail.reduce((a, b) => a + b, 0);
+    const v = (a) => all[a].visited.length / 2, p = (a) => all[a].path.length / 2 - 1;
+    $("rp-chips").innerHTML =
+      `<div class="me"><b>${g.steps}</b> 步<span>你走的（经过 ${seen} 个不同格子）</span></div>` +
+      `<div class="bfs"><b>${p(0)}</b> 步<span>BFS 找到的 · 访问 ${v(0)} 格（${Math.round((100 * v(0)) / cells)}%）</span></div>` +
+      `<div class="dfs"><b>${p(2)}</b> 步<span>DFS 找到的 · 访问 ${v(2)} 格（${Math.round((100 * v(2)) / cells)}%）</span></div>`;
+    const a = g.rp.algo, isBfs = a === 0 || a === 3;
+    let text;
+    if (isBfs)
+      text = `<b>BFS</b> 像水波一样从起点一圈一圈向外扩散（颜色从薄荷绿到樱花粉，表示离起点越来越远），第一次碰到宝箱时走的就是最短路线：<b>${p(0)} 步</b>。` +
+        `代价是看得多：它访问了 ${v(0)} 格，而你只走过 ${seen} 个格子。`;
+    else
+      text = `<b>DFS</b> 认准一个方向一路走到底（按 上→右→下→左 的顺序尝试），碰壁就退回上一个岔路口。它访问了 ${v(2)} 格就找到了宝箱，路线长 <b>${p(2)} 步</b>，` +
+        (p(2) > minSteps ? `比最短路线多 ${p(2) - minSteps} 步：这一关有环路，两点之间不止一条路，DFS 不保证最短。`
+          : `和最短路线一样长：${LEVELS[level].loop ? "这次运气不错" : "完美迷宫里两点之间只有一条路"}，所以 DFS 找到的也是最短路线。`);
+    text += g.steps > minSteps ? `　你的路线比最短多 ${g.steps - minSteps} 步。` : "　你的路线和 BFS 一样短！";
+    if (a === 1 || a === 3) text += "<br><span class=\"muted\">递归写法和非递归写法访问顺序逐格相同，区别只在于用系统调用栈还是显式的" + (isBfs ? "队列" : "栈") + "。</span>";
+    $("rp-text").innerHTML = text;
+  }
+
+  // ---------------- 动画 ----------------
+  function kick() { if (!raf) raf = requestAnimationFrame(frame); }
+  function frame(t) {
+    raf = null;
+    if (g.mode === "intro") {
+      const it = g.intro;
+      introStepTo(Math.floor(clamp((t - it.start) / it.dur, 0, 1) * it.total));
+      introText();
+      if (it.step >= it.total && !it.done) { it.done = true; setTimeout(finishIntro, 350); }
+    }
+    if (g.moveT < 1) {
+      g.moveT = clamp((t - g.moveStart) / 110, 0, 1);
+      if (g.moveT >= 1) {
+        if (g.pos.r === maze.h - 1 && g.pos.c === maze.w - 1 && !g.won) win();
+        else if (g.pending !== null) { const d = g.pending; g.pending = null; move(d); }
+      }
+    }
+    if (g.mode === "replay" && g.rp.playing) {
+      const rp = g.rp, dt = Math.min(100, t - rp.last);
+      rp.last = t;
+      rp.acc = (rp.acc || 0) + (dt * rp.sps) / 1000;
+      const n = Math.floor(rp.acc);
+      if (n > 0) { rp.acc -= n; rp.step = Math.min(rp.total, rp.step + n); }
+      if (rp.step >= rp.total) { rp.playing = false; rp.pathStart = t; replayButtons(); }
+    }
+    for (const p of g.confetti) { p.x += p.vx; p.y += p.vy; p.vy += 0.06; p.rot += p.vr; }
+    g.confetti = g.confetti.filter((p) => p.y < cell * maze.h + 40);
+    if (g.started && !g.won) hud();
+    draw(t);
+    if (active) raf = requestAnimationFrame(frame);   // 角色呼吸、宝箱闪光需要持续动画
+  }
+
+  // ---------------- 绘制 ----------------
+  const cx = (c) => M + c * cell + cell / 2, cy = (r) => M + r * cell + cell / 2;
+  function polyline(pts) {
+    ctx.beginPath(); ctx.moveTo(cx(pts[0][1]), cy(pts[0][0]));
+    for (const [r, c] of pts) ctx.lineTo(cx(c), cy(r));
+  }
+  function draw(t) {
+    if (!maze || !ctx) return;
+    const W = cell * maze.w + 2 * M, H = cell * maze.h + 2 * M, w = maze.w, h = maze.h;
+    const intro = g.mode === "intro" ? g.intro : null;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    // 草地（棋盘格）；生成动画中还没打通的格子是深色灌木丛
+    for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+      const k = r * w + c;
+      let color = (r + c) % 2 ? "#BEE494" : "#C8EBA0";
+      if (intro) {
+        if (!intro.carved[k]) color = (r + c) % 2 ? "#8DBF6A" : "#96C873";
+        else if (intro.step - 1 - intro.breakAt[k] < 2) color = "#FFE58A";
+      }
+      ctx.fillStyle = color;
+      ctx.fillRect(M + c * cell, M + r * cell, cell, cell);
+    }
+    ctx.fillStyle = "#C8EBA0";
+    ctx.fillRect(0, 0, W, M); ctx.fillRect(0, H - M, W, M); ctx.fillRect(0, 0, M, H); ctx.fillRect(W - M, 0, M, H);
+
+    // 复盘：算法访问过的格子按离起点的距离上色（热力图）
+    const rp = g.mode === "replay" ? g.rp : null;
+    if (rp) {
+      const inset = Math.max(1, cell * 0.1);
+      for (let i = 0; i < rp.step; i++) {
+        ctx.fillStyle = heat(rp.depth[i] / rp.maxDepth);
+        ctx.globalAlpha = 0.85;
+        roundRect(ctx, M + rp.sol.visited[i * 2 + 1] * cell + inset, M + rp.sol.visited[i * 2] * cell + inset, cell - 2 * inset, cell - 2 * inset, cell * 0.2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      if (rp.step > 0 && rp.step < rp.total) {
+        const r = rp.sol.visited[(rp.step - 1) * 2], c = rp.sol.visited[(rp.step - 1) * 2 + 1];
+        ctx.save(); ctx.shadowColor = "rgba(255,200,40,.9)"; ctx.shadowBlur = cell * 0.8;
+        ctx.fillStyle = "#FFE066"; roundRect(ctx, M + c * cell + inset, M + r * cell + inset, cell - 2 * inset, cell - 2 * inset, cell * 0.2); ctx.fill();
+        ctx.restore();
+      }
+    } else if (!intro) {
+      // 脚印
+      for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (g.trail[r * w + c]) {
+        ctx.fillStyle = "#E2B77A";
+        const x = cx(c), y = cy(r), s = cell * 0.09;
+        ctx.beginPath(); ctx.ellipse(x - s * 1.4, y + s, s, s * 1.4, -0.3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(x + s * 1.4, y - s, s, s * 1.4, -0.3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // 最短路线（金色流动虚线）
+    if (g.showRoute && shortest.length > 1 && !intro && !rp) {
+      ctx.save();
+      polyline(shortest);
+      ctx.lineJoin = "round"; ctx.lineCap = "round";
+      ctx.strokeStyle = "rgba(255, 201, 60, .35)"; ctx.lineWidth = cell * 0.42; ctx.stroke();
+      ctx.setLineDash([cell * 0.28, cell * 0.22]); ctx.lineDashOffset = -(t / 40);
+      ctx.strokeStyle = "#F2A71B"; ctx.lineWidth = cell * 0.13; ctx.stroke();
+      ctx.restore();
+    }
+    // 树篱（墙）：深绿粗线 + 浅绿高光
+    const walls = intro ? intro.walls : maze.walls;
+    const hedge = (width, color) => {
+      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = "round"; ctx.beginPath();
+      for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+        const v = walls[r * w + c], x = M + c * cell, y = M + r * cell;
+        if (v & 1) { ctx.moveTo(x, y); ctx.lineTo(x + cell, y); }
+        if (v & 8) { ctx.moveTo(x, y); ctx.lineTo(x, y + cell); }
+        if (c === w - 1 && v & 2) { ctx.moveTo(x + cell, y); ctx.lineTo(x + cell, y + cell); }
+        if (r === h - 1 && v & 4) { ctx.moveTo(x, y + cell); ctx.lineTo(x + cell, y + cell); }
+      }
+      ctx.stroke();
+    };
+    hedge(Math.max(4, cell * 0.3), "#3E8A31");
+    hedge(Math.max(2.5, cell * 0.18), "#5DB44A");
+    hedge(Math.max(1, cell * 0.06), "#8ED777");
+
+    // 复盘：我的路线（蓝色虚线）+ 算法找到的路线（红色描线）
+    if (rp) {
+      ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round";
+      if ($("rp-mine").checked && g.route.length > 1) {
+        polyline(g.route);
+        ctx.setLineDash([cell * 0.18, cell * 0.16]);
+        ctx.strokeStyle = "#2F7FC1"; ctx.lineWidth = Math.max(2, cell * 0.1); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (rp.step >= rp.total && rp.sol.path.length >= 4) {
+        const pts = [];
+        for (let k = 0; k < rp.sol.path.length; k += 2) pts.push([rp.sol.path[k], rp.sol.path[k + 1]]);
+        const prog = clamp((t - rp.pathStart) / clamp(pts.length * 25, 600, 1600), 0, 1);
+        const upto = Math.max(1, Math.round(prog * (pts.length - 1)));
+        const part = pts.slice(0, upto + 1);
+        polyline(part); ctx.strokeStyle = "rgba(255,94,94,.25)"; ctx.lineWidth = cell * 0.5; ctx.stroke();
+        polyline(part); ctx.strokeStyle = "#FF5E5E"; ctx.lineWidth = Math.max(2.5, cell * 0.16); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    drawFlag(cx(0), cy(0), t);
+    drawChest(cx(w - 1), cy(h - 1), t);
+
+    // 探险家（生成动画中还没登场）
+    if (!intro) {
+      let px = cx(g.from.c) + (cx(g.pos.c) - cx(g.from.c)) * ease(g.moveT);
+      let py = cy(g.from.r) + (cy(g.pos.r) - cy(g.from.r)) * ease(g.moveT);
+      if (g.won) px -= cell * 0.48;
+      let bob = Math.sin(t / 260) * cell * 0.03;
+      if (g.moveT < 1) bob = -Math.sin(g.moveT * Math.PI) * cell * 0.18;
+      if (g.mode === "won") bob = -Math.abs(Math.sin((t - g.wonAt) / 180)) * cell * 0.2;
+      if (g.bump) {
+        const e = (t - g.bump.t) / 200;
+        if (e >= 1) g.bump = null;
+        else { const [dr, dc] = DIRS[g.bump.dir], k = Math.sin(e * Math.PI) * cell * 0.15; px += dc * k; py += dr * k; }
+      }
+      drawExplorer(px, py, cell, g.facingLeft && !g.won, bob);
+    }
+
+    // 撒花
+    for (const p of g.confetti) {
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+      ctx.restore();
+    }
+  }
+  const ease = (x) => 1 - Math.pow(1 - x, 3);
+  function drawFlag(x, y, t) {
+    const s = cell;
+    ctx.save();
+    ctx.strokeStyle = "#8B5E3C"; ctx.lineWidth = Math.max(1.5, s * 0.07); ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x - s * 0.22, y + s * 0.34); ctx.lineTo(x - s * 0.22, y - s * 0.36); ctx.stroke();
+    const wave = Math.sin(t / 300) * s * 0.04;
+    ctx.fillStyle = "#FF5E5E";
+    ctx.beginPath(); ctx.moveTo(x - s * 0.2, y - s * 0.36); ctx.quadraticCurveTo(x + s * 0.05, y - s * 0.3 + wave, x + s * 0.24, y - s * 0.22 + wave);
+    ctx.lineTo(x - s * 0.2, y - s * 0.06); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  function drawChest(x, y, t) {
+    const s = cell, bw = s * 0.66, bh = s * 0.36, bx = x - bw / 2, by = y - bh * 0.15;
+    ctx.save();
+    const glow = g.won ? 0.75 : 0.25 + 0.15 * Math.sin(t / 400);
+    const grd = ctx.createRadialGradient(x, y, s * 0.1, x, y, s * 0.75);
+    grd.addColorStop(0, `rgba(255, 220, 90, ${glow})`); grd.addColorStop(1, "rgba(255, 220, 90, 0)");
+    ctx.fillStyle = grd; ctx.fillRect(x - s, y - s, s * 2, s * 2);
+    ctx.fillStyle = "#A0612B"; roundRect(ctx, bx, by, bw, bh, s * 0.06); ctx.fill();
+    ctx.fillStyle = "#FFC93C"; ctx.fillRect(x - s * 0.05, by, s * 0.1, bh);
+    if (!g.won) {
+      ctx.fillStyle = "#B8743A";
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx, by - s * 0.12);
+      ctx.quadraticCurveTo(x, by - s * 0.38, bx + bw, by - s * 0.12); ctx.lineTo(bx + bw, by); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#FFC93C"; ctx.fillRect(x - s * 0.05, by - s * 0.26, s * 0.1, s * 0.26);
+      ctx.fillStyle = "#6B3F1A"; roundRect(ctx, x - s * 0.06, by - s * 0.03, s * 0.12, s * 0.1, s * 0.02); ctx.fill();
+      const sp = (t / 700) % 1;
+      drawSparkle(x + s * 0.28, y - s * 0.3, s * 0.09 * Math.sin(sp * Math.PI));
+      drawSparkle(x - s * 0.3, y - s * 0.12, s * 0.07 * Math.sin(((sp + 0.5) % 1) * Math.PI));
+    } else {
+      ctx.fillStyle = "#8B5326";
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + s * 0.04, by - s * 0.3); ctx.lineTo(bx + bw - s * 0.04, by - s * 0.3); ctx.lineTo(bx + bw, by); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#FFD45E";
+      ctx.beginPath(); ctx.ellipse(x, by + s * 0.02, bw * 0.42, s * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+      if (g.mode === "won") {
+        const e = (t - g.wonAt) / 1000;
+        for (let i = 0; i < 5; i++) {
+          const ph = (e * 1.2 + i / 5) % 1, ang = -Math.PI / 2 + (i - 2) * 0.35;
+          const cxp = x + Math.cos(ang) * ph * s * 0.6, cyp = by - Math.sin(-ang) * ph * s * 0.7 + ph * ph * s * 0.4;
+          ctx.globalAlpha = 1 - ph;
+          ctx.fillStyle = "#FFC93C"; ctx.beginPath(); ctx.arc(cxp, cyp, s * 0.07, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#D89A12"; ctx.lineWidth = 1; ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.restore();
+  }
+  function drawSparkle(x, y, r) {
+    if (r <= 0.3) return;
+    ctx.fillStyle = "#FFFBE0";
+    ctx.beginPath();
+    ctx.moveTo(x, y - r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.quadraticCurveTo(x, y, x, y + r);
+    ctx.quadraticCurveTo(x, y, x - r, y); ctx.quadraticCurveTo(x, y, x, y - r); ctx.fill();
+  }
+  function drawExplorer(x, y, s, left, bob) {
+    const r = s * 0.3;
+    ctx.save();
+    ctx.fillStyle = "rgba(40, 80, 20, .22)";
+    ctx.beginPath(); ctx.ellipse(x, y + s * 0.34, r * 0.85, r * 0.25, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.translate(x, y + bob);
+    if (left) ctx.scale(-1, 1);
+    ctx.fillStyle = "#9B6A3A"; roundRect(ctx, -r * 1.02, -r * 0.05, r * 0.5, r * 0.85, r * 0.16); ctx.fill();
+    ctx.fillStyle = "#4FA3E0"; roundRect(ctx, -r * 0.68, r * 0.15, r * 1.36, r * 0.9, r * 0.38); ctx.fill();
+    ctx.fillStyle = "#3D8FC6"; ctx.fillRect(-r * 0.68, r * 0.62, r * 1.36, r * 0.1);
+    ctx.fillStyle = "#FFDDB8"; ctx.beginPath(); ctx.arc(0, -r * 0.18, r * 0.76, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255, 140, 150, .55)";
+    ctx.beginPath(); ctx.ellipse(-r * 0.12, r * 0.06, r * 0.15, r * 0.09, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(r * 0.55, r * 0.06, r * 0.13, r * 0.09, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#3A2A1E";
+    ctx.beginPath(); ctx.arc(r * 0.08, -r * 0.15, r * 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r * 0.44, -r * 0.15, r * 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(r * 0.11, -r * 0.19, r * 0.035, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r * 0.47, -r * 0.19, r * 0.035, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#3A2A1E"; ctx.lineWidth = Math.max(1, r * 0.07); ctx.lineCap = "round";
+    ctx.beginPath(); ctx.arc(r * 0.26, r * 0.02, r * 0.1, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    ctx.fillStyle = "#D9A55B"; ctx.beginPath(); ctx.ellipse(0, -r * 0.66, r * 1.02, r * 0.24, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#E8BC72"; ctx.beginPath(); ctx.ellipse(0, -r * 0.72, r * 0.6, r * 0.5, 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = "#8B5E3C"; ctx.fillRect(-r * 0.6, -r * 0.8, r * 1.2, r * 0.12);
+    ctx.restore();
+  }
+  function setActive(on) {
+    active = on;
+    if (on) { fit(); kick(); canvas().focus({ preventScroll: true }); }
+  }
+  return { init, setActive };
+})();
+
+// =====================================================================
+// 页签切换（地址栏 #game / #lab / #gen / #solve / #about）
+// =====================================================================
+const VIEWS = ["game", "lab", "gen", "solve", "about"];
+function showView() {
+  const name = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "game";   // 默认打开闯关冒险
+  for (const v of VIEWS) $("view-" + v).classList.toggle("active", v === name);
+  document.querySelectorAll("nav.tabs a").forEach((a) => (a.dataset.view === name ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
+  if (name !== "lab") Lab.pause();    // 离开某一页时暂停它的动画
+  if (name !== "gen") GenCompare.pause();
+  if (name !== "solve") SolveCompare.pause();
+  Game.setActive(name === "game");    // 只有在闯关页时才响应方向键、播放角色动画
+  if (name === "lab") Lab.refit();    // 回到实验室时重新计算画布大小（隐藏时宽度是 0）
+  if (name === "gen") {
+    // 第一次进入生成对比页时，用实验室当前的迷宫尺寸（太大的话退回 15×15，避免统计太慢）
+    if (!GenCompare.started) {
+      const m = Lab.state.maze;
+      GenCompare.setSize(m.w > 80 ? 15 : m.w, m.h > 80 ? 15 : m.h);
+      GenCompare.started = true;
+    }
+    GenCompare.enter();
+  }
+  if (name === "solve") SolveCompare.enter();
+}
+function drawLogo() {
+  const c = $("logo").getContext("2d");
+  c.scale(2, 2);
+  roundRect(c, 1, 1, 44, 44, 12); c.fillStyle = "#A7D98A"; c.fill();
+  c.strokeStyle = "#3E8A31"; c.lineWidth = 3.2; c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(9, 9); c.lineTo(37, 9); c.moveTo(9, 9); c.lineTo(9, 37); c.lineTo(28, 37);
+  c.moveTo(37, 9); c.lineTo(37, 37); c.moveTo(18, 18); c.lineTo(18, 28); c.moveTo(18, 18); c.lineTo(28, 18); c.lineTo(28, 28);
+  c.stroke();
+  c.fillStyle = "#FFC93C"; c.beginPath(); c.arc(32.5, 32.5, 3.6, 0, Math.PI * 2); c.fill();
+  c.fillStyle = "#FF5E5E"; c.beginPath(); c.arc(13.5, 13.5, 2.6, 0, Math.PI * 2); c.fill();
+}
+
+(async () => {
+  drawLogo();
+  try {
+    await Engine.init();
+  } catch (e) {
+    $("loading").innerHTML = '<span class="error">C++ 算法模块载入失败：' + e.message + "。请使用较新的 Chrome / Edge / Firefox / Safari 打开。</span>";
+    return;
+  }
+  $("loading").hidden = true;
+  Lab.init();
+  GenCompare.init();
+  SolveCompare.init();
+  Game.init();
+  window.addEventListener("hashchange", showView);
+  showView();
+})();
+</script>
+</body>
+</html>

@@ -24,6 +24,7 @@ namespace
         return static_cast<int>(std::lround(std::pow(10.0, value * 3.0 / 100.0)));
     }
 
+    // 创建一个不可编辑的表格单元格
     QTableWidgetItem* cell(const QString& text, bool center = true)
     {
         auto* item = new QTableWidgetItem(text);
@@ -32,27 +33,27 @@ namespace
         return item;
     }
 
-    // 格子的出口数（没有墙的方向数）
+    // 格子的出口数（没有墙的方向数）。bool 转 int：true=1，false=0
     int openings(const Cell& c)
     {
         return (!c.wallTop) + (!c.wallRight) + (!c.wallBottom) + (!c.wallLeft);
     }
 }
-
 GenCompareDialog::GenCompareDialog(int width, int height, QWidget* parent)
     : QDialog(parent), width_(width), height_(height)
 {
+    // 样本数：小迷宫多取（最多 100），大迷宫少取（至少 20），保证窗口打开不卡
     samples_count_ = std::clamp(200000 / std::max(1, width * height), 20, 100);
     setWindowTitle("生成算法对比：Kruskal（并查集） vs Prim（堆优化）");
 
-    columns_.push_back({ GenAlgorithm::Kruskal, "Kruskal（并查集）", {} });
-    columns_.push_back({ GenAlgorithm::Prim, "Prim（堆优化）", {} });
+    columns_.push_back({ GenAlgorithm::Kruskal, "Kruskal（并查集）",{} });
+    columns_.push_back({ GenAlgorithm::Prim, "Prim（堆优化）",{} });
 
     auto* layout = new QVBoxLayout(this);
     layout->setSizeConstraint(QLayout::SetFixedSize);  // 窗口大小按内容固定，迷宫不会被挤压重叠
     auto* header = new QLabel(QString("迷宫大小：%1 行 × %2 列（共 %3 格，完美迷宫）。"
-                                      "同步播放两种算法的拆墙过程，生成完后显示起点到终点的最短路线。")
-                                  .arg(height_).arg(width_).arg(width_ * height_), this);
+        "同步播放两种算法的拆墙过程，生成完后显示起点到终点的最短路线。")
+        .arg(height_).arg(width_).arg(width_ * height_), this);
     header->setWordWrap(true);
     layout->addWidget(header);
 
@@ -74,7 +75,7 @@ GenCompareDialog::GenCompareDialog(int width, int height, QWidget* parent)
         auto* title = new QLabel("<b style='font-size:12pt;'>" + col.name + "</b>", this);
         title->setAlignment(Qt::AlignCenter);
         col.view = new MazeWidget(this);
-        col.view->setCompact(true, 300);
+        col.view->setCompact(true, 300);   // 紧凑模式：不画图例，迷宫最大 300 像素
         col.caption = new QLabel(this);
         col.caption->setAlignment(Qt::AlignCenter);
         column->addWidget(title);
@@ -85,12 +86,12 @@ GenCompareDialog::GenCompareDialog(int width, int height, QWidget* parent)
 
         MazeWidget* view = col.view;
         QLabel* caption = col.caption;
-        // 进度文字
+        // 每拆一面墙：更新进度文字
         connect(view, &MazeWidget::stepChanged, this, [this, view, caption](int step, int total) {
             if (view->phase() == MazeWidget::Phase::Generating)
                 caption->setText(QString("拆墙 %1 / %2 次").arg(step).arg(total));
             updateButtons();
-        });
+            });
         connect(view, &MazeWidget::playingChanged, this, [this](bool) { updateButtons(); });
         // 生成播完 -> 用 BFS 求出左上角到右下角的最短路线，直接显示结果（热力图 + 路径）
         connect(view, &MazeWidget::finished, this, [this, view, caption, index]() {
@@ -105,104 +106,103 @@ GenCompareDialog::GenCompareDialog(int width, int height, QWidget* parent)
                 caption->setText(QString("生成完成　起点→终点路径 %1 格").arg(path.size()));
             }
             updateButtons();
-        });
+            });
     }
     left->addLayout(viewsRow);
+        // ---------- 同步播放控制 ----------
+        auto* controls = new QHBoxLayout();
+        speedSlider_ = new QSlider(Qt::Horizontal, this);
+        speedSlider_->setRange(0, 100);
+        speedSlider_->setValue(57);  // 约每秒 50 步
+        speedSlider_->setMaximumWidth(140);
+        speedLabel_ = new QLabel(this);
+        speedLabel_->setMinimumWidth(80);
+        playButton_ = new QPushButton("同步播放", this);
+        playButton_->setObjectName("accentButton");   // 主题里的天蓝按钮
+        skipButton_ = new QPushButton("全部跳到结尾", this);
+        resetButton_ = new QPushButton("重置", this);
+        auto* resampleButton = new QPushButton("换一组样本", this);
+        controls->addWidget(new QLabel("速度：", this));
+        controls->addWidget(speedSlider_);
+        controls->addWidget(speedLabel_);
+        controls->addSpacing(16);
+        controls->addWidget(playButton_);
+        controls->addWidget(skipButton_);
+        controls->addWidget(resetButton_);
+        controls->addWidget(resampleButton);
+        left->addLayout(controls);
+        left->addStretch();
 
-    // ---------- 同步播放控制 ----------
-    auto* controls = new QHBoxLayout();
-    speedSlider_ = new QSlider(Qt::Horizontal, this);
-    speedSlider_->setRange(0, 100);
-    speedSlider_->setValue(57);  // 约每秒 50 步
-    speedSlider_->setMaximumWidth(140);
-    speedLabel_ = new QLabel(this);
-    speedLabel_->setMinimumWidth(80);
-    playButton_ = new QPushButton("同步播放", this);
-    playButton_->setObjectName("accentButton");
-    skipButton_ = new QPushButton("全部跳到结尾", this);
-    resetButton_ = new QPushButton("重置", this);
-    auto* resampleButton = new QPushButton("换一组样本", this);
-    controls->addWidget(new QLabel("速度：", this));
-    controls->addWidget(speedSlider_);
-    controls->addWidget(speedLabel_);
-    controls->addSpacing(16);
-    controls->addWidget(playButton_);
-    controls->addWidget(skipButton_);
-    controls->addWidget(resetButton_);
-    controls->addWidget(resampleButton);
-    left->addLayout(controls);
-    left->addStretch();
+        // 一个速度同时设给两个迷宫，所以两边一定同步
+        auto applySpeed = [this](int value) {
+            const int steps = sliderToStepsPerSecond(value);
+            for (AlgoColumn& col : columns_) col.view->setStepsPerSecond(steps);
+            speedLabel_->setText(QString("%1 步/秒").arg(steps));
+            };
+        connect(speedSlider_, &QSlider::valueChanged, this, applySpeed);
 
-    auto applySpeed = [this](int value) {
-        const int steps = sliderToStepsPerSecond(value);
-        for (AlgoColumn& col : columns_) col.view->setStepsPerSecond(steps);
-        speedLabel_->setText(QString("%1 步/秒").arg(steps));
-    };
-    connect(speedSlider_, &QSlider::valueChanged, this, applySpeed);
-
-    connect(playButton_, &QPushButton::clicked, this, [this]() {
-        bool anyPlaying = false;
-        for (AlgoColumn& col : columns_) anyPlaying |= col.view->isPlaying();
-        for (AlgoColumn& col : columns_)
-        {
-            if (anyPlaying) col.view->pause();
-            else if (col.view->phase() == MazeWidget::Phase::Generating && !col.view->isFinished()) col.view->play();
-        }
-        // 两个都已生成完：重新开始播放生成过程
-        bool allDone = true;
-        for (AlgoColumn& col : columns_) allDone &= (col.view->phase() == MazeWidget::Phase::Solving);
-        if (!anyPlaying && allDone)
-        {
+        // 播放/暂停按钮：有一个在播就全部暂停；都没在播就全部开始；都播完了就从头重播
+        connect(playButton_, &QPushButton::clicked, this, [this]() {
+            bool anyPlaying = false;
+            for (AlgoColumn& col : columns_) anyPlaying |= col.view->isPlaying();
+            for (AlgoColumn& col : columns_)
+            {
+                if (anyPlaying) col.view->pause();
+                else if (col.view->phase() == MazeWidget::Phase::Generating && !col.view->isFinished()) col.view->play();
+            }
+            bool allDone = true;
+            for (AlgoColumn& col : columns_) allDone &= (col.view->phase() == MazeWidget::Phase::Solving);
+            if (!anyPlaying && allDone)
+            {
+                for (int i = 0; i < static_cast<int>(columns_.size()); ++i)
+                    columns_[i].view->setGeneration(samples_[i], sampleSteps_[i]);
+                for (AlgoColumn& col : columns_) col.view->play();
+            }
+            updateButtons();
+            });
+        connect(skipButton_, &QPushButton::clicked, this, [this]() {
+            for (AlgoColumn& col : columns_)
+                if (col.view->phase() == MazeWidget::Phase::Generating) col.view->skipToEnd();
+            updateButtons();
+            });
+        connect(resetButton_, &QPushButton::clicked, this, [this]() {
             for (int i = 0; i < static_cast<int>(columns_.size()); ++i)
                 columns_[i].view->setGeneration(samples_[i], sampleSteps_[i]);
-            for (AlgoColumn& col : columns_) col.view->play();
-        }
-        updateButtons();
-    });
-    connect(skipButton_, &QPushButton::clicked, this, [this]() {
-        for (AlgoColumn& col : columns_)
-            if (col.view->phase() == MazeWidget::Phase::Generating) col.view->skipToEnd();
-        updateButtons();
-    });
-    connect(resetButton_, &QPushButton::clicked, this, [this]() {
-        for (int i = 0; i < static_cast<int>(columns_.size()); ++i)
-            columns_[i].view->setGeneration(samples_[i], sampleSteps_[i]);
-        updateButtons();
-    });
-    connect(resampleButton, &QPushButton::clicked, this, [this]() { newSample(); });
+            updateButtons();
+            });
+        connect(resampleButton, &QPushButton::clicked, this, [this]() { newSample(); });
+        // ---------- 统计表 ----------
+        runStatistics();                 // 先算数据
+        table_ = new QTableWidget(this);
+        table_->setFixedWidth(430);
+        buildTable();                    // 再填表
+        right->addWidget(table_);
 
-    // ---------- 统计表 ----------
-    runStatistics();
-    table_ = new QTableWidget(this);
-    table_->setFixedWidth(430);
-    buildTable();
-    right->addWidget(table_);
+        summaryLabel_ = new QLabel(buildSummary(), this);
+        summaryLabel_->setWordWrap(true);
+        summaryLabel_->setTextFormat(Qt::RichText);   // 支持 <b> 加粗
+        summaryLabel_->setFixedWidth(430);
+        right->addWidget(summaryLabel_);
 
-    summaryLabel_ = new QLabel(buildSummary(), this);
-    summaryLabel_->setWordWrap(true);
-    summaryLabel_->setTextFormat(Qt::RichText);
-    summaryLabel_->setFixedWidth(430);
-    right->addWidget(summaryLabel_);
+        auto* note = new QLabel(QString(
+            "说明：统计为每种算法各 %1 个同尺寸随机迷宫（固定种子，可复现）的平均值；耗时不含动画，正式比较请用 Release 编译。<br>"
+            "理论复杂度（E 为内部墙数，约 2N）：Kruskal = 随机打乱 O(E) + 并查集 O(E·α(N))；Prim = 每面墙进出二叉堆一次 O(E log E)。")
+            .arg(samples_count_), this);
+        note->setWordWrap(true);
+        note->setStyleSheet("color: #A08770;");
+        note->setFixedWidth(430);
+        right->addWidget(note);
+        right->addStretch();
 
-    auto* note = new QLabel(QString(
-        "说明：统计为每种算法各 %1 个同尺寸随机迷宫（固定种子，可复现）的平均值；耗时不含动画，正式比较请用 Release 编译。<br>"
-        "理论复杂度（E 为内部墙数，约 2N）：Kruskal = 随机打乱 O(E) + 并查集 O(E·α(N))；Prim = 每面墙进出二叉堆一次 O(E log E)。")
-        .arg(samples_count_), this);
-    note->setWordWrap(true);
-    note->setStyleSheet("color: #A08770;");
-    note->setFixedWidth(430);
-    right->addWidget(note);
-    right->addStretch();
+        auto* buttons = new QDialogButtonBox(this);
+        auto* closeButton = buttons->addButton("关闭", QDialogButtonBox::RejectRole);
+        connect(closeButton, &QPushButton::clicked, this, &QDialog::reject);
+        layout->addWidget(buttons);
 
-    auto* buttons = new QDialogButtonBox(this);
-    auto* closeButton = buttons->addButton("关闭", QDialogButtonBox::RejectRole);
-    connect(closeButton, &QPushButton::clicked, this, &QDialog::reject);
-    layout->addWidget(buttons);
-
-    newSample();
-    applySpeed(speedSlider_->value());
+        newSample();                     // 生成第一组展示用的样本
+        applySpeed(speedSlider_->value());
 }
-
+// 动画展示用：两种算法各生成一个迷宫（随机种子，每次不一样）
 void GenCompareDialog::newSample()
 {
     samples_.assign(columns_.size(), MazeGrid{});
@@ -227,27 +227,29 @@ GenCompareDialog::MazeStats GenCompareDialog::measure(const MazeGrid& maze)
         {
             const Cell& cell = maze[r][c];
             const int n = openings(cell);
-            if (n == 1) ++s.deadEnds;
-            if (n >= 3) ++s.junctions;
+            if (n == 1) ++s.deadEnds;      // 只有一个出口 = 死胡同
+            if (n >= 3) ++s.junctions;     // 三个以上出口 = 岔路口
+            // 两个出口且是"对面"（上下通或左右通）= 直道
             if (n == 2 && ((!cell.wallTop && !cell.wallBottom) || (!cell.wallLeft && !cell.wallRight))) ++straight;
-            // 内部墙：每格只数右边和下边，避免重复
+            // 内部墙：每格只数右边和下边，避免同一面墙被两边的格子各数一次
             if (c < cols - 1 && !cell.wallRight) ++s.wallsRemoved;
             if (r < rows - 1 && !cell.wallBottom) ++s.wallsRemoved;
         }
     s.straightRatio = 100.0 * straight / (rows * cols);
 
+    // 用你写的 BFS 求左上到右下的最短路径，再数拐弯次数
     std::vector<Point> path, visited, parent;
     solveMaze(maze, { 0, 0 }, { rows - 1, cols - 1 }, SolveAlgorithm::BFS, path, visited, parent);
     s.pathLength = static_cast<int>(path.size());
     for (std::size_t i = 2; i < path.size(); ++i)
     {
+        // 前一步的方向 (dr1,dc1) 和这一步的方向 (dr2,dc2) 不一样 = 拐了一次弯
         const int dr1 = path[i - 1].row - path[i - 2].row, dc1 = path[i - 1].col - path[i - 2].col;
         const int dr2 = path[i].row - path[i - 1].row, dc2 = path[i].col - path[i - 1].col;
         if (dr1 != dr2 || dc1 != dc2) ++s.pathTurns;
     }
     return s;
 }
-
 void GenCompareDialog::runStatistics()
 {
     using Clock = std::chrono::steady_clock;
@@ -258,7 +260,7 @@ void GenCompareDialog::runStatistics()
         {
             const unsigned seed = 1000u + static_cast<unsigned>(i);  // 固定种子：每次打开结果都一样，方便展示
             const auto t0 = Clock::now();
-            const MazeGrid maze = generateMaze(width_, height_, col.algo, seed, 0.0);
+            const MazeGrid maze = generateMaze(width_, height_, col.algo, seed, 0.0);   // 只计时这一行
             const double micros = std::chrono::duration<double, std::micro>(Clock::now() - t0).count();
             const MazeStats s = measure(maze);
             sum.genMicros += micros;
@@ -308,6 +310,7 @@ void GenCompareDialog::buildTable()
         for (int r = 0; r < values.size(); ++r) table_->setItem(r, c + 1, cell(values[r]));
     }
 
+    // 表格高度刚好放下表头 + 所有行，不出现滚动条
     table_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     table_->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
     table_->verticalHeader()->setDefaultSectionSize(table_->fontMetrics().lineSpacing() + 8);
@@ -326,7 +329,7 @@ QString GenCompareDialog::buildSummary() const
     // 1. 完美迷宫 = 生成树：拆墙次数恰好 N-1
     if (k.wallsRemoved == n - 1 && p.wallsRemoved == n - 1)
         parts << QString("两种算法都恰好拆墙 <b>N−1 = %1</b> 次 —— %2 个格子连成一棵生成树，"
-                         "这正是\"完美迷宫：连通且只有一条路\"的证明").arg(n - 1).arg(n);
+            "这正是\"完美迷宫：连通且只有一条路\"的证明").arg(n - 1).arg(n);
 
     // 2. 耗时
     const bool kFaster = k.genMicros < p.genMicros;
@@ -339,7 +342,7 @@ QString GenCompareDialog::buildSummary() const
         if (similar(a, b)) return QString("%1差不多（%2 对 %3）").arg(what).arg(a).arg(b);
         return QString("%1的%2%3（%4 对 %5）").arg(a > b ? "Kruskal" : "Prim").arg(what).arg(more)
             .arg(std::max(a, b)).arg(std::min(a, b));
-    };
+        };
     parts << compare(k.deadEnds, p.deadEnds, "死胡同数量", "更多");
     // 路径长度随机波动大，门槛放宽到 10%
     if (std::fabs(k.pathLength - p.pathLength) <= 0.10 * std::max(k.pathLength, p.pathLength))
@@ -349,13 +352,13 @@ QString GenCompareDialog::buildSummary() const
 
     QString text = "<b>结论：</b>" + parts.join("；") + "。";
     const bool shapesSimilar = similar(k.deadEnds, p.deadEnds) && similar(k.junctions, p.junctions)
-                            && similar(k.straightRatio, p.straightRatio)
-                            && std::fabs(k.pathLength - p.pathLength) <= 0.10 * std::max(k.pathLength, p.pathLength);
+        && similar(k.straightRatio, p.straightRatio)
+        && std::fabs(k.pathLength - p.pathLength) <= 0.10 * std::max(k.pathLength, p.pathLength);
     if (shapesSimilar)
         text += "<br><b>为什么形状几乎一样？</b>两者本质上都是在\"随机权重的网格图\"上求最小生成树"
-                "（Kruskal 随机打乱墙的顺序，Prim 给每面墙随机权重），得到的迷宫在统计上属于同一种分布；"
-                "真正的区别在于<b>生成过程</b>（Kruskal 全图多处同时合并、靠并查集判断是否成环；"
-                "Prim 从一点向外生长、靠堆选出最小边）和<b>速度</b>。";
+        "（Kruskal 随机打乱墙的顺序，Prim 给每面墙随机权重），得到的迷宫在统计上属于同一种分布；"
+        "真正的区别在于<b>生成过程</b>（Kruskal 全图多处同时合并、靠并查集判断是否成环；"
+        "Prim 从一点向外生长、靠堆选出最小边）和<b>速度</b>。";
     return text;
 }
 
@@ -365,7 +368,7 @@ void GenCompareDialog::updateButtons()
     for (const AlgoColumn& col : columns_)
     {
         anyPlaying |= col.view->isPlaying();
-        const bool done = (col.view->phase() == MazeWidget::Phase::Solving);
+        const bool done = (col.view->phase() == MazeWidget::Phase::Solving);   // 进入求解阶段 = 生成已播完
         allDone &= done;
         anyStarted |= done || col.view->currentStep() > 0;
     }

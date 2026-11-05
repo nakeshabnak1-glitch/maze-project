@@ -3,11 +3,7 @@
 
 /*
  * 界面主题：卡通、可爱的"小探险家找宝箱"风格。
- *
- * 浅色马卡龙配色 + 圆润的糖果按钮 + 草地/树篱迷宫。
- * 所有颜色和样式表（QSS）都集中在这一个文件里，想换风格只改这里。
- * 只有头文件、没有 .cpp，新增它不需要重新配置 CMake。
- *
+ * 浅色马卡龙配色 + 圆润的糖果按钮。所有颜色和样式表（QSS）都集中在这个文件里，想换风格只改这里。
  * 用法：main.cpp 里在创建窗口前调用一次 applyAppTheme(app);
  */
 
@@ -29,7 +25,7 @@ namespace Theme
     inline const QColor kAccent("#FF9F43");     // 橙色强调
     inline const QColor kWarn("#D98E04");
 
-    // ---- 闯关画布：森林草地 ----
+    // ---- 闯关画布：森林草地（第6步用） ----
     inline const QColor kGrassA("#C8EBA0");     // 草地棋盘格（两种深浅交替）
     inline const QColor kGrassB("#BEE494");
     inline const QColor kHedge("#4E9F3D");      // 树篱墙
@@ -38,18 +34,18 @@ namespace Theme
     inline const QColor kGoldPath("#FFC93C");   // BFS 最短路线（金色）
     inline const QColor kCanvasFrame("#8FC46F");
 
-    // ---- 算法实验室画布（同样换成浅色卡通） ----
+    // ---- 算法实验室画布（5B 用） ----
     inline const QColor kCanvasBg("#FFF9EE");
     inline const QColor kWall("#8B5E3C");       // 巧克力色墙
     inline const QColor kStart("#4CAF50");
     inline const QColor kEnd("#FF5E5E");
     inline const QColor kCrimson("#FF5E5E");
-    inline const QColor kParentLine(139, 94, 60, 60);
+    inline const QColor kParentLine(139, 94, 60, 60);   // 第 4 个参数是透明度
     inline const QColor kCurrent("#FFE066");    // 当前探索格：柠檬黄
     inline const QColor kCarved("#FFE3B3");     // 生成阶段：已打通
     inline const QColor kJustBroken("#FF9F43"); // 生成阶段：本步拆墙
 
-    // 实验室热力图色带：离起点越近越偏薄荷绿，越远越偏粉紫（马卡龙色系）
+    // 热力图色带（5B 用）：离起点越近越偏薄荷绿，越远越偏粉紫。t 从 0 到 1
     inline QColor heatColor(double t)
     {
         static const QColor stops[] = {
@@ -61,14 +57,14 @@ namespace Theme
         constexpr int n = 4;
         if (t <= 0.0) return stops[0];
         if (t >= 1.0) return stops[n - 1];
-        const double pos = t * (n - 1);
+        const double pos = t * (n - 1);      // 落在第几段色带上
         const int i = static_cast<int>(pos);
-        const double f = pos - i;
+        const double f = pos - i;            // 在这一段里走了多远（0~1）
         const QColor& a = stops[i];
         const QColor& b = stops[i + 1];
-        return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * f,
-                                a.greenF() + (b.greenF() - a.greenF()) * f,
-                                a.blueF() + (b.blueF() - a.blueF()) * f);
+        return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * f,     // 线性插值
+            a.greenF() + (b.greenF() - a.greenF()) * f,
+            a.blueF() + (b.blueF() - a.blueF()) * f);
     }
 }
 
@@ -147,7 +143,7 @@ inline void applyAppTheme(QApplication& app)
         QPushButton#accentButton:pressed  { border-bottom: 2px solid #337FB3; }
         QPushButton#accentButton:disabled { background: #BFDDF0; color: #EAF4FB; border-color: #BFDDF0; }
 
-        /* 关卡按钮：圆圆的大按钮 */
+        /* 关卡按钮（第7步用）：圆圆的大按钮 */
         QPushButton#levelButton {
             background: #FFFFFF; min-width: 50px; min-height: 46px; padding: 2px 4px;
             border: 2px solid #F0D9B5; border-bottom: 4px solid #E5C48F; border-radius: 14px;
@@ -174,6 +170,7 @@ inline void applyAppTheme(QApplication& app)
             background: #FFFFFF; border: 2px solid #FF9F43; width: 16px; margin: -6px 0; border-radius: 10px;
         }
 
+        /* 页签（第8步用） */
         QTabWidget::pane { border: none; top: -2px; }
         QTabBar::tab {
             background: #FFE8BD; color: #8B6A4E;

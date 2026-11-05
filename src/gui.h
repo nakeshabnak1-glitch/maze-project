@@ -52,8 +52,8 @@ public:
 
     // 接收求解结果：进入求解阶段，动画回到第 0 步，处于暂停状态，等用户点"播放"
     void setSolution(const std::vector<Point>& path,
-                     const std::vector<Point>& visitedOrder,
-                     const std::vector<Point>& parentOf);
+        const std::vector<Point>& visitedOrder,
+        const std::vector<Point>& parentOf);
 
     // ---------- 播放控制（由 MainWindow 的按钮调用） ----------
     void play();                       // 开始/继续播放；如果已经播完，则从头重播

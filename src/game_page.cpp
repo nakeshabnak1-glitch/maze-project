@@ -117,7 +117,7 @@ GamePage::GamePage(QWidget* parent) : QWidget(parent)
         l->addWidget(valueOut);
         l->addWidget(cap);
         return w;
-    };
+        };
     hud->addWidget(bigNumber("步数", stepsLabel_), 0, 0);
     hud->addWidget(bigNumber("用时（秒）", timeLabel_), 0, 1);
 
@@ -208,20 +208,20 @@ GamePage::GamePage(QWidget* parent) : QWidget(parent)
         pathButton_->setText(on ? "隐藏最短路线" : "显示最短路线");
         if (on) showResultCard(false);
         game_->setFocus();
-    });
+        });
     connect(resultButton_, &QPushButton::clicked, this, [this]() { showResultCard(true); });
     connect(viewPathButton, &QPushButton::clicked, this, [this]() { pathButton_->setChecked(true); });
     connect(againButton, &QPushButton::clicked, this, [this]() { loadLevel(current_); });
     connect(nextButton_, &QPushButton::clicked, this, [this]() {
         loadLevel(std::min(current_ + 1, static_cast<int>(levels_.size()) - 1));
-    });
+        });
 
     // 用时每 0.1 秒刷新一次
     clockTimer_ = new QTimer(this);
     clockTimer_->setInterval(100);
     connect(clockTimer_, &QTimer::timeout, this, [this]() {
         timeLabel_->setText(QString::number(game_->elapsedSeconds(), 'f', 1));
-    });
+        });
     clockTimer_->start();
 
     loadLevel(0);
@@ -239,9 +239,9 @@ void GamePage::loadLevel(int index)
 
     levelButtons_[index]->setChecked(true);
     levelInfo_->setText(QString("<b>第 %1 关 · %2</b><br>"
-                                "<span style='color:#A08770;'>%3 × %4 格，%5</span>")
-                            .arg(index + 1).arg(lv.name).arg(lv.width).arg(lv.height)
-                            .arg(lv.loopRate > 0 ? QString("有环路（岔路更多）") : QString("没有环路")));
+        "<span style='color:#A08770;'>%3 × %4 格，%5</span>")
+        .arg(index + 1).arg(lv.name).arg(lv.width).arg(lv.height)
+        .arg(lv.loopRate > 0 ? QString("有环路（岔路更多）") : QString("没有环路")));
 
     pathButton_->setChecked(false);
     pathButton_->setEnabled(false);   // 通关后才能看最短路线
@@ -280,13 +280,15 @@ void GamePage::onReachedGoal(int steps, int shortestSteps, double seconds)
         "</table>")
         .arg(steps).arg(shortestSteps).arg(efficiency, 0, 'f', 0).arg(seconds, 0, 'f', 1));
 
-    static const char* comments[] = {
-        "",
-        "成功通关！打开金色的最短路线看看，下次争取少走点弯路～",
-        "很棒！离最短路线只差一点点了～",
-        "完美！你走的路和 BFS 找到的最短路线一样短！",
-    };
-    resultComment_->setText(comments[stars]);
+    // 注意：三星允许比最短路线多 5% 以内（见 starsFor），所以"三星"不等于"和最短一样短"，
+    // 评语要按实际多走的步数来写
+    const int extra = steps - shortestSteps;
+    QString comment;
+    if (extra <= 0) comment = "完美！你走的路和 BFS 找到的最短路线一样短！";
+    else if (stars == 3) comment = QString("只比最短路线多走了 %1 步，非常接近！").arg(extra);
+    else if (stars == 2) comment = QString("很棒！比最短路线多走了 %1 步，再试试能不能更快～").arg(extra);
+    else comment = QString("成功通关！多走了 %1 步，打开金色的最短路线看看，下次争取少走点弯路～").arg(extra);
+    resultComment_->setText(comment);
     nextButton_->setEnabled(current_ + 1 < static_cast<int>(levels_.size()));
     nextButton_->setText(nextButton_->isEnabled() ? "下一关 ▶" : "全部通关！");
 
@@ -316,7 +318,7 @@ void GamePage::showResultCard(bool show)
 void GamePage::positionResultCard()
 {
     resultCard_->move((game_->width() - resultCard_->width()) / 2,
-                      (game_->height() - resultCard_->height()) / 2);
+        (game_->height() - resultCard_->height()) / 2);
 }
 
 void GamePage::refreshLevelButtons()

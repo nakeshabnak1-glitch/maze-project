@@ -269,7 +269,7 @@ void GameWidget::drawGround(QPainter& p)
     for (int r = 0; r < rows; ++r)
         for (int c = 0; c < cols; ++c)
             p.fillRect(QRectF(offsetX_ + c * cellSize_, offsetY_ + r * cellSize_, cellSize_, cellSize_),
-                       ((r + c) % 2 == 0) ? Theme::kGrassA : Theme::kGrassB);
+                ((r + c) % 2 == 0) ? Theme::kGrassA : Theme::kGrassB);
     p.restore();
 }
 

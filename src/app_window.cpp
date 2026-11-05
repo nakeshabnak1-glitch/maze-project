@@ -24,5 +24,5 @@ AppWindow::AppWindow(QWidget* parent) : QWidget(parent)
     // 切回游戏页签时，让游戏画布重新拿到键盘焦点
     connect(tabs_, &QTabWidget::currentChanged, this, [this](int index) {
         if (index == 0) game_->focusGame();
-    });
+        });
 }
