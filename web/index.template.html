@@ -254,6 +254,19 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* 性能分析沿用实验室卡片和数据表。 */
+.perf-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); gap: 14px; }
+.perf-scroll { overflow-x: auto; }
+.perf-chart { display: block; width: 100%; min-width: 450px; height: auto; }
+.perf-section { margin-block: 14px; }
+.perf-section p { margin: 4px 0 12px; }
+.perf-section details { margin-top: 12px; }
+.perf-section summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+.perf-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0; margin: 4px 0 8px; list-style: none; }
+.perf-legend span { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+.perf-bar { width: clamp(54px, 38%, 110px); margin-right: 8px; vertical-align: middle; accent-color: var(--sky-deep); }
+
 </style>
 </head>
 <body>
@@ -271,6 +284,7 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
       <a href="#lab" data-view="lab">算法实验室</a>
       <a href="#gen" data-view="gen">生成算法对比</a>
       <a href="#solve" data-view="solve">求解算法对比</a>
+      <a href="#perf" data-view="perf">性能分析</a>
       <a href="#about" data-view="about">关于项目</a>
     </nav>
   </header>
@@ -488,6 +502,68 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
 
 
   <!-- ================= 关于 ================= -->
+
+  <section class="view" id="view-perf" aria-label="性能分析">
+    <div class="card flat perf-section">
+      <h2>迷宫规模与耗时</h2>
+      <p>每个尺寸使用 20 个固定种子。每个种子预热后重复计时，曲线取各种子平均单次耗时的中位数。求解使用同一张 Kruskal 完美迷宫，起点和终点分别为左上角和右下角。</p>
+      <p class="notice" id="perf-error" role="status" hidden></p>
+      <div class="perf-charts">
+        <div>
+          <h3>生成算法</h3>
+          <ul class="perf-legend" id="perf-gen-legend"></ul>
+          <div class="perf-scroll" tabindex="0" role="region" aria-label="生成耗时图，可横向滚动">
+            <canvas class="perf-chart" id="perf-gen-chart" width="1040" height="480" role="img" aria-label="生成算法耗时曲线，数值见下方数据表"></canvas>
+          </div>
+        </div>
+        <div>
+          <h3>求解算法</h3>
+          <ul class="perf-legend" id="perf-solve-legend"></ul>
+          <div class="perf-scroll" tabindex="0" role="region" aria-label="求解耗时图，可横向滚动">
+            <canvas class="perf-chart" id="perf-solve-chart" width="1040" height="480" role="img" aria-label="求解算法耗时曲线，数值见下方数据表"></canvas>
+          </div>
+        </div>
+      </div>
+      <p class="small">横纵轴均为对数刻度。两种递归实现仅测到 50 × 50，以控制栈溢出风险。</p>
+      <details>
+        <summary>查看各尺寸耗时（µs）</summary>
+        <div class="data-wrap" tabindex="0" role="region" aria-label="耗时数据表，可横向滚动">
+          <table class="data" id="perf-times"></table>
+        </div>
+      </details>
+    </div>
+    <div class="card flat perf-section">
+      <h2>环路如何影响路径长度</h2>
+      <p>环路比例指在完美迷宫中额外拆除的剩余内墙比例。每个比例汇总 50 × 50、100 × 100、200 × 200 三种尺寸，每种尺寸使用 20 个种子。</p>
+      <p id="perf-loop-summary"></p>
+      <div class="data-wrap" tabindex="0" role="region" aria-label="环路实验数据表，可横向滚动">
+        <table class="data">
+          <thead><tr><th scope="col">环路比例</th><th scope="col">迭代 DFS 路径长于 BFS</th><th scope="col">样本占比</th></tr></thead>
+          <tbody id="perf-loops"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card flat perf-section">
+      <h2>时间与辅助空间复杂度</h2>
+      <p><var>N</var> 为格子数，<var>E</var> 为候选内墙数。四邻接网格上 <var>E</var> = O(<var>N</var>)。下表给出最坏情形下的渐近上界，辅助空间不计输入和最终输出。</p>
+      <div class="data-wrap" tabindex="0" role="region" aria-label="复杂度表，可横向滚动">
+        <table class="data">
+          <thead><tr><th scope="col">算法</th><th scope="col">时间</th><th scope="col">辅助空间</th><th scope="col">主要开销</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Kruskal</th><td>O(N + E·α(N))</td><td>O(N + E)</td><td>打乱墙列表、并查集操作</td></tr>
+            <tr><th scope="row">Prim</th><td>O(N + E log(E + 1))</td><td>O(N + E)</td><td>候选墙的堆操作</td></tr>
+            <tr><th scope="row">BFS 非递归</th><td>O(N)</td><td>O(N)</td><td>访问表、父节点表、显式队列</td></tr>
+            <tr><th scope="row">BFS 递归</th><td>O(N)</td><td>O(N)</td><td>各层前沿、访问表、父节点表。栈深取决于处理的层数</td></tr>
+            <tr><th scope="row">DFS 非递归</th><td>O(N)</td><td>O(N)</td><td>访问表、父节点表、显式栈</td></tr>
+            <tr><th scope="row">DFS 递归</th><td>O(N)</td><td>O(N)</td><td>访问表、父节点表。栈深取决于搜索深度</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">α 为反阿克曼函数，并查集单次操作的复杂度按摊还计算。仓库 CSV 测量耗时与访问格数，空间复杂度来自对源码的分析。</p>
+      <p class="small">数据来自白荷初的性能测试，见仓库 <code>docs/perf_results.csv</code> 与 <code>docs/loop_results.csv</code>。</p>
+    </div>
+  </section>
+
   <section class="view" id="view-about" aria-label="关于项目">
     <div class="about">
       <div class="stack" style="gap:14px">
@@ -501,7 +577,7 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
             <tr><td>基本</td><td>逐步显示搜索路径</td><td>算法实验室 → 播放 / 单步 / 跳到结尾，热力图显示离起点的距离</td></tr>
             <tr><td>额外</td><td>更好的交互式界面</td><td>闯关冒险：玩家自己走迷宫，再和 BFS 最短路线对比评星</td></tr>
             <tr><td>额外</td><td>可视化比较不同生成算法</td><td>生成算法对比：并排同步播放 + 多样本统计</td></tr>
-            <tr><td>额外</td><td>性能（时间 / 空间复杂度）分析</td><td>两个对比页给出实测耗时；完整测试与报告见仓库 <code>test/</code> 与 <code>docs/</code></td></tr>
+            <tr><td>额外</td><td>性能（时间 / 空间复杂度）分析</td><td><a href="#perf">性能分析</a>页展示耗时曲线、环路实验和复杂度表</td></tr>
           </table>
         </div>
       </div>
@@ -531,6 +607,8 @@ code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-siz
 
 <!-- 编译好的 maze.wasm 以 base64 文本的形式嵌在这里（由 embed.ps1 / embed.py 填入），这样不用服务器也能打开 -->
 <script type="application/octet-stream" id="wasm-b64">__MAZE_WASM_BASE64__</script>
+<script type="text/plain" id="perf-data">__PERF_CSV_BASE64__</script>
+<script type="text/plain" id="loop-data">__LOOP_CSV_BASE64__</script>
 <script>
 "use strict";
 // =====================================================================
@@ -1958,10 +2036,203 @@ const Game = (() => {
   return { init, setActive };
 })();
 
+
+const PerformancePage = (() => {
+  const series = [
+    { key: "Kruskal", label: "Kruskal", phase: "gen", color: "#A55013", dash: [] },
+    { key: "Prim", label: "Prim", phase: "gen", color: "#23699B", dash: [6, 3] },
+    { key: "BFS", label: "BFS 非递归", phase: "solve", color: "#23699B", dash: [] },
+    { key: "BFS_Recursive", label: "BFS 递归", phase: "solve", color: "#694289", dash: [6, 3] },
+    { key: "DFS_Iterative", label: "DFS 非递归", phase: "solve", color: "#37723D", dash: [2, 3] },
+    { key: "DFS_Recursive", label: "DFS 递归", phase: "solve", color: "#A55013", dash: [9, 3, 2, 3] }
+  ];
+  let rendered = false;
+
+  // 实验 CSV 的字段只含算法名和数字，没有带引号的字段。
+  function readRows(id) {
+    const encoded = $(id).textContent.trim();
+    const bytes = Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0));
+    const [header, ...lines] = new TextDecoder().decode(bytes).trim().split(/\r?\n/);
+    const keys = header.split(",");
+    return lines.filter(Boolean).map((line) => {
+      const values = line.split(",");
+      return Object.fromEntries(keys.map((key, i) => [key, values[i]]));
+    });
+  }
+
+  function summarize(rows) {
+    const samples = new Map();
+    const sizes = new Map();
+    for (const row of rows) {
+      const cells = Number(row.width) * Number(row.height);
+      const time = Number(row.time_us);
+      if (!(cells > 0 && time > 0 && Number.isFinite(time))) continue;
+      const key = [row.algo, cells].join(":");
+      if (!samples.has(key)) samples.set(key, []);
+      samples.get(key).push(time);
+      sizes.set(cells, `${row.width} × ${row.height}`);
+    }
+
+    const medians = new Map();
+    for (const [key, times] of samples) {
+      times.sort((a, b) => a - b);
+      const middle = Math.floor(times.length / 2);
+      medians.set(key, (times[middle] + times[Math.floor((times.length - 1) / 2)]) / 2);
+    }
+    return { cells: [...sizes.keys()].sort((a, b) => a - b), sizes, medians };
+  }
+
+  function drawChart(phase, data) {
+    const selected = series.filter((item) => item.phase === phase);
+    const points = selected.map((item) => data.cells
+      .map((cells) => [cells, data.medians.get([item.key, cells].join(":"))])
+      .filter(([, time]) => time !== undefined));
+    const legend = $("perf-" + phase + "-legend");
+    selected.forEach((item) => {
+      const entry = document.createElement("li");
+      const swatch = document.createElement("span");
+      swatch.style.backgroundColor = item.color;
+      entry.append(swatch, item.label);
+      legend.append(entry);
+    });
+
+    const ctx = $("perf-" + phase + "-chart").getContext("2d");
+    if (!ctx) return;
+    const times = points.flat().map(([, time]) => time);
+    if (!times.length || data.cells.length < 2) return;
+    const minPower = Math.floor(Math.log10(Math.min(...times)));
+    const maxPower = Math.max(minPower + 1, Math.ceil(Math.log10(Math.max(...times))));
+    const left = 68, right = 490, top = 24, bottom = 196;
+    const minX = Math.log10(data.cells[0]), maxX = Math.log10(data.cells.at(-1));
+    const x = (cells) => left + (right - left) * (Math.log10(cells) - minX) / (maxX - minX);
+    const y = (power) => bottom - (bottom - top) * (power - minPower) / (maxPower - minPower);
+
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+    ctx.font = '14px "Microsoft YaHei", sans-serif';
+    ctx.fillStyle = "#5A3E2B";
+    ctx.textAlign = "left";
+    ctx.fillText("耗时（µs）", 4, 12);
+    ctx.textAlign = "right";
+    for (let power = minPower; power <= maxPower; power++) {
+      const row = y(power);
+      ctx.strokeStyle = "#E9D6BD";
+      ctx.beginPath();
+      ctx.moveTo(left, row);
+      ctx.lineTo(right, row);
+      ctx.stroke();
+      ctx.fillText((10 ** power).toLocaleString("zh-CN"), left - 8, row + 4);
+    }
+    ctx.textAlign = "center";
+    const countLabel = new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 });
+    for (const cells of data.cells) {
+      const col = x(cells);
+      ctx.strokeStyle = "#F3E8D9";
+      ctx.beginPath();
+      ctx.moveTo(col, top);
+      ctx.lineTo(col, bottom);
+      ctx.stroke();
+      ctx.fillText(countLabel.format(cells), col, bottom + 17);
+    }
+    ctx.fillText("迷宫格子数（宽 × 高）", (left + right) / 2, bottom + 36);
+
+    points.forEach((values, index) => {
+      const item = selected[index];
+      ctx.strokeStyle = item.color;
+      ctx.fillStyle = item.color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash(item.dash);
+      ctx.beginPath();
+      values.forEach(([cells, time], i) => {
+        const px = x(cells), py = y(Math.log10(time));
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (const [cells, time] of values) {
+        ctx.beginPath();
+        ctx.arc(x(cells), y(Math.log10(time)), 3, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    });
+  }
+
+  function renderTimes(data) {
+    const table = $("perf-times");
+    const header = table.createTHead().insertRow();
+    for (const label of ["迷宫尺寸", ...series.map((item) => item.label)]) {
+      const cell = document.createElement("th");
+      cell.scope = "col";
+      cell.textContent = label;
+      header.append(cell);
+    }
+    const body = table.createTBody();
+    for (const cells of data.cells) {
+      const row = body.insertRow();
+      row.insertCell().textContent = data.sizes.get(cells);
+      for (const item of series) {
+        const time = data.medians.get([item.key, cells].join(":"));
+        row.insertCell().textContent = time === undefined ? "未测" : time.toFixed(2);
+      }
+    }
+  }
+
+  function renderLoops(rows) {
+    const groups = new Map();
+    for (const row of rows) {
+      if (row.algo !== "DFS_Iterative") continue;
+      const rate = Number(row.loop_rate);
+      if (!groups.has(rate)) groups.set(rate, { longer: 0, total: 0 });
+      const group = groups.get(rate);
+      group.total++;
+      if (Number(row.path_len) > Number(row.shortest_len)) group.longer++;
+    }
+    const percent = new Intl.NumberFormat("zh-CN", { style: "percent", maximumFractionDigits: 1 });
+    for (const [rate, { longer, total }] of [...groups].sort(([a], [b]) => a - b)) {
+      const row = $("perf-loops").insertRow();
+      row.insertCell().textContent = percent.format(rate);
+      row.insertCell().textContent = `${longer} / ${total}`;
+      const cell = row.insertCell();
+      const bar = document.createElement("progress");
+      bar.className = "perf-bar";
+      bar.max = total;
+      bar.value = longer;
+      bar.setAttribute("aria-label", percent.format(rate) + " 环路比例下 DFS 路径较长的样本占比");
+      cell.append(bar, percent.format(longer / total));
+    }
+    const perfect = groups.get(0), onePercent = groups.get(0.01);
+    if (perfect && onePercent) {
+      $("perf-loop-summary").textContent =
+        `无环时，DFS 路径较长的样本占 ${perfect.longer}/${perfect.total}。额外拆除 1% 的剩余内墙后，该比例为 ${onePercent.longer}/${onePercent.total}。`;
+    }
+  }
+
+  function enter() {
+    if (rendered) return;
+    rendered = true;
+    try {
+      const data = summarize(readRows("perf-data"));
+      const loops = readRows("loop-data");
+      if (!data.cells.length || !loops.length) throw new Error("missing benchmark data");
+      renderTimes(data);
+      renderLoops(loops);
+      drawChart("gen", data);
+      drawChart("solve", data);
+    } catch (error) {
+      const message = $("perf-error");
+      message.textContent = "性能数据无法载入，请使用打包生成的 index.html。";
+      message.hidden = false;
+      console.error(error);
+    }
+  }
+
+  return { enter };
+})();
+
 // =====================================================================
-// 页签切换（地址栏 #game / #lab / #gen / #solve / #about）
+// 页签切换（地址栏 #game / #lab / #gen / #solve / #perf / #about）
 // =====================================================================
-const VIEWS = ["game", "lab", "gen", "solve", "about"];
+const VIEWS = ["game", "lab", "gen", "solve", "perf", "about"];
 function showView() {
   const name = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "game";   // 默认打开闯关冒险
   for (const v of VIEWS) $("view-" + v).classList.toggle("active", v === name);
@@ -1981,6 +2252,7 @@ function showView() {
     GenCompare.enter();
   }
   if (name === "solve") SolveCompare.enter();
+  if (name === "perf") PerformancePage.enter();
 }
 function drawLogo() {
   const c = $("logo").getContext("2d");
